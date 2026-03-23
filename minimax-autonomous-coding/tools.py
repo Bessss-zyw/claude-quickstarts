@@ -173,6 +173,31 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 MAX_OUTPUT_LENGTH = 30000
 BASH_TIMEOUT_SECONDS = 120
 
+# ---------------------------------------------------------------------------
+# Shell preamble — commands injected before every bash execution.
+#
+# Use set_shell_preamble() to configure, or pass --shell-preamble on the CLI.
+# Each entry is a shell command string. They are joined with " && " and
+# prepended to every bash tool call.
+#
+# Examples:
+#   set_shell_preamble(["conda activate myenv"])
+#   set_shell_preamble(["source /opt/ros/humble/setup.bash"])
+#   set_shell_preamble(["nvm use 20", "export LANG=en_US.UTF-8"])
+# ---------------------------------------------------------------------------
+_shell_preamble: list[str] = []
+
+
+def set_shell_preamble(commands: list[str]) -> None:
+    """Set shell preamble commands that run before every bash execution."""
+    global _shell_preamble
+    _shell_preamble = list(commands)
+
+
+def get_shell_preamble() -> list[str]:
+    """Return the current shell preamble."""
+    return list(_shell_preamble)
+
 
 def _truncate(text: str, limit: int = MAX_OUTPUT_LENGTH) -> str:
     if len(text) <= limit:
@@ -228,15 +253,24 @@ def _exec_bash(args: dict, project_dir: Path) -> str:
     if not command:
         return "[ERROR] No command provided"
 
-    # Security validation
+    # Security validation (only validates the user command, not the preamble)
     allowed, reason = validate_bash_command(command)
     if not allowed:
         return f"[BLOCKED] {reason}"
 
+    # Prepend shell preamble (conda activate, nvm use, etc.)
+    if _shell_preamble:
+        full_command = " && ".join(_shell_preamble + [command])
+    else:
+        full_command = command
+
     try:
+        # Use login shell (-l) so that ~/.bash_profile / ~/.zshrc are loaded.
+        # This ensures PATH includes tools installed via nvm, pyenv, homebrew, etc.
+        import platform
+        shell_bin = "/bin/zsh" if platform.system() == "Darwin" else "/bin/bash"
         result = subprocess.run(
-            command,
-            shell=True,
+            [shell_bin, "-l", "-c", full_command],
             capture_output=True,
             text=True,
             timeout=BASH_TIMEOUT_SECONDS,

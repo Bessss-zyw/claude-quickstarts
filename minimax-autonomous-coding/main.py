@@ -32,6 +32,7 @@ import argparse
 from pathlib import Path
 
 from agent import run_autonomous_agent
+from tools import set_shell_preamble
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,6 +55,15 @@ Examples:
 
   # Custom provider
   python main.py --provider custom --base-url https://api.example.com/v1 --model my-model --project-dir ./my_project
+
+  # Run inside a conda environment
+  python main.py --project-dir ./my_project --shell-preamble "conda activate myenv"
+
+  # Multiple preamble commands
+  python main.py --project-dir ./my_project --shell-preamble "conda activate myenv" --shell-preamble "export LANG=en_US.UTF-8"
+
+  # Use nvm
+  python main.py --project-dir ./my_project --shell-preamble "nvm use 20"
 
 Environment Variables:
   MINIMAX_API_KEY    MiniMax API key (for --provider minimax)
@@ -100,12 +110,29 @@ Environment Variables:
         default=None,
         help="Maximum number of agent iterations (default: unlimited)",
     )
+    parser.add_argument(
+        "--shell-preamble",
+        type=str,
+        action="append",
+        default=None,
+        help=(
+            "Shell command(s) to run before every bash execution. "
+            "Can be specified multiple times. "
+            "Example: --shell-preamble 'conda activate myenv'"
+        ),
+    )
 
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+
+    # Configure shell preamble (conda activate, nvm use, etc.)
+    if args.shell_preamble:
+        set_shell_preamble(args.shell_preamble)
+        print(f"Shell preamble: {' && '.join(args.shell_preamble)}")
+        print()
 
     # Auto-prepend generations/ for relative paths
     project_dir = args.project_dir
