@@ -15,7 +15,7 @@ from openai import OpenAI
 # ---------------------------------------------------------------------------
 PROVIDERS = {
     "minimax": {
-        "base_url": "https://api.minimax.chat/v1",
+        "base_url": "https://api.minimax.io/v1",
         "default_model": "MiniMax-Text-01",
         "env_key": "MINIMAX_API_KEY",
     },
