@@ -80,8 +80,19 @@ def run_agent_session(
                 temperature=0.3,
             )
         except Exception as e:
+            error_str = str(e)
             print(f"\n[API ERROR] {e}")
-            return "error", str(e)
+
+            # Detect fatal errors that should not be retried
+            fatal_keywords = [
+                "insufficient_balance", "insufficient balance",
+                "invalid api key", "authorized_error", "authentication",
+                "account_suspended", "quota_exceeded",
+            ]
+            if any(kw in error_str.lower() for kw in fatal_keywords):
+                return "fatal", error_str
+
+            return "error", error_str
 
         choice = response.choices[0]
         msg: ChatCompletionMessage = choice.message
@@ -231,6 +242,14 @@ def run_autonomous_agent(
 
         # Print progress
         print_progress_summary(project_dir)
+
+        if status == "fatal":
+            print("\n" + "!" * 70)
+            print("  FATAL ERROR - cannot continue")
+            print("!" * 70)
+            print(f"\n  {response}")
+            print("\n  Please fix the issue and run again.")
+            break
 
         if status == "error":
             print("\nSession encountered an error. Retrying...")
