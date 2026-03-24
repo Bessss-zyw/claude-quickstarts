@@ -13,6 +13,7 @@ _PROVIDER_MAP: dict[str, tuple[str | None, str]] = {
     "deepseek": (None,                "DEEPSEEK_API_KEY"),
 }
 
+_NVIDIA_DEFAULT_BASE_URL = "https://inference-api.nvidia.com/v1"
 _DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 
@@ -27,7 +28,7 @@ class LLMClient:
         api_key: str | None = None
 
         if provider == "nvidia":
-            base_url = os.environ.get("NVIDIA_BASE_URL")
+            base_url = os.environ.get("NVIDIA_BASE_URL", _NVIDIA_DEFAULT_BASE_URL)
             api_key = os.environ.get("NVIDIA_API_KEY", "")
         elif provider == "openai":
             api_key = os.environ.get("OPENAI_API_KEY", "")

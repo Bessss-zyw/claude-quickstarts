@@ -8,24 +8,34 @@ A multi-agent coordination framework that orchestrates LLM-powered specialist ag
 pip install -r requirements.txt
 ```
 
-Dependencies: `openai`, `pyyaml`
+Dependencies: `openai`, `pyyaml`, `python-dotenv`
 
 ## Quick Start
 
 ### 1. Set up API keys
 
-```bash
-# OpenAI
-export OPENAI_API_KEY="sk-..."
+Create a `.env` file next to your `task.yaml` (or in the harness directory):
 
-# NVIDIA NIM
-export NVIDIA_BASE_URL="https://integrate.api.nvidia.com/v1"
-export NVIDIA_API_KEY="nvapi-..."
+```bash
+# .env — loaded automatically at startup
+# Copy from .env.example and fill in your keys.
+
+# NVIDIA Inference Hub (default base_url; override only if needed)
+# NVIDIA_BASE_URL=https://inference-api.nvidia.com/v1
+NVIDIA_API_KEY=nvapi-...
+
+# OpenAI
+OPENAI_API_KEY=sk-...
 
 # DeepSeek
-export DEEPSEEK_API_KEY="sk-..."
+DEEPSEEK_API_KEY=sk-...
+```
 
-# Generic provider: {PROVIDER}_BASE_URL + {PROVIDER}_API_KEY
+The harness searches for `.env` in this order: task.yaml directory → cwd → harness source directory.
+
+Alternatively, export env vars directly:
+```bash
+export NVIDIA_API_KEY="nvapi-..."
 ```
 
 ### 2. Write a `task.yaml`
@@ -68,7 +78,7 @@ agents:
     role: "Write and debug code."
     model:
       provider: nvidia
-      name: meta/llama-3.1-70b-instruct
+      name: aws/anthropic/bedrock-claude-opus-4-6
     tools:
       - bash
       - read_file
@@ -191,8 +201,8 @@ The harness is **interruptible and resumable**. All state lives on the filesyste
 | Variable | Provider | Required |
 |----------|----------|:--------:|
 | `OPENAI_API_KEY` | openai | ✓ |
-| `NVIDIA_BASE_URL` | nvidia | ✓ |
-| `NVIDIA_API_KEY` | nvidia | ✓ |
+| `NVIDIA_BASE_URL` | nvidia | ✗ (default: `https://inference-api.nvidia.com/v1`) |
+| `NVIDIA_API_KEY` | nvidia | ✓ (get from [inference.nvidia.com/key-management](https://inference.nvidia.com/key-management)) |
 | `DEEPSEEK_API_KEY` | deepseek | ✓ |
 | `{PROVIDER}_BASE_URL` | custom | ✓ |
 | `{PROVIDER}_API_KEY` | custom | ✓ |

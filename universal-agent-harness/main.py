@@ -14,6 +14,7 @@ import signal
 import sys
 
 import yaml
+from dotenv import load_dotenv
 
 from config import HarnessConfig
 from agent_registry import AgentRegistry
@@ -63,6 +64,16 @@ def main() -> None:
     parser.add_argument("--resume", action="store_true", default=True,
                         help="Resume from existing .harness/ state (default)")
     args = parser.parse_args()
+
+    # Load .env (search: task.yaml dir → cwd → harness source dir)
+    task_dir = os.path.dirname(os.path.abspath(args.task))
+    harness_dir = os.path.dirname(os.path.abspath(__file__))
+    for env_dir in (task_dir, os.getcwd(), harness_dir):
+        env_file = os.path.join(env_dir, ".env")
+        if os.path.isfile(env_file):
+            load_dotenv(env_file, override=False)
+            logger.info("Loaded .env from %s", env_dir)
+            break
 
     # Load config
     config = load_config(args.task, args.max_iterations)
