@@ -33,6 +33,7 @@ from pathlib import Path
 
 from agent import run_autonomous_agent
 from tools import set_shell_preamble
+from prompts import set_mode
 
 
 def parse_args() -> argparse.Namespace:
@@ -116,6 +117,13 @@ Environment Variables:
         help="Maximum number of agent iterations (default: unlimited)",
     )
     parser.add_argument(
+        "--mode",
+        type=str,
+        default="coding",
+        choices=["coding", "perf"],
+        help="Prompt mode: 'coding' for web/app development, 'perf' for GPU performance analysis (default: coding)",
+    )
+    parser.add_argument(
         "--shell-preamble",
         type=str,
         action="append",
@@ -132,6 +140,11 @@ Environment Variables:
 
 def main() -> None:
     args = parse_args()
+
+    # Set prompt mode
+    set_mode(args.mode)
+    if args.mode != "coding":
+        print(f"Mode: {args.mode}")
 
     # Configure shell preamble (conda activate, nvm use, etc.)
     if args.shell_preamble:

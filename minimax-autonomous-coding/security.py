@@ -36,6 +36,17 @@ ALLOWED_COMMANDS = {
     "tar", "zip", "unzip",
     # Network (for dev servers)
     "curl", "wget",
+    # CUDA / GPU profiling
+    "nvcc", "ncu", "nsys", "nvidia-smi", "dcgmi",
+    "cuda-gdb", "compute-sanitizer",
+    # Conda
+    "conda", "mamba",
+    # SSH (for remote GPU nodes)
+    "ssh", "scp", "rsync",
+    # Build tools
+    "make", "cmake", "ninja",
+    # macOS / iOS development
+    "xcodebuild", "xcrun", "swift", "swiftc", "open",
 }
 
 # Commands that need extra validation
