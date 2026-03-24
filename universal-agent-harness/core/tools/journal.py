@@ -8,7 +8,7 @@ import shutil
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from tools import register_tool
+from core.tools import register_tool
 
 if TYPE_CHECKING:
     from config import HarnessConfig

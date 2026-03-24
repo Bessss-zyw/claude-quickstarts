@@ -1,12 +1,15 @@
-"""Parse task.yaml and build the agent registry."""
+"""Parse task file (YAML or Markdown) and build the agent registry."""
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 
 import yaml
+
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
 @dataclass
@@ -22,13 +25,22 @@ class AgentDefinition:
 class AgentRegistry:
     """Load agent definitions from task.yaml."""
 
-    def __init__(self, task_yaml_path: str) -> None:
-        with open(task_yaml_path) as f:
-            data = yaml.safe_load(f)
+    def __init__(self, task_file_path: str) -> None:
+        ext = os.path.splitext(task_file_path)[1].lower()
+        with open(task_file_path) as f:
+            content = f.read()
+
+        if ext in (".md", ".markdown"):
+            m = _FRONTMATTER_RE.match(content)
+            if not m:
+                raise ValueError("Markdown task file must have YAML frontmatter (--- ... ---).")
+            data = yaml.safe_load(m.group(1)) or {}
+        else:
+            data = yaml.safe_load(content)
 
         agents_section = data.get("agents", {})
         if "coordinator" not in agents_section:
-            raise ValueError("task.yaml must define an 'agents.coordinator' entry.")
+            raise ValueError("Task file must define an 'agents.coordinator' entry.")
 
         self._agents: dict[str, AgentDefinition] = {}
         for name, spec in agents_section.items():

@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 from typing import TYPE_CHECKING
 
-from tools import register_tool
-from security import check_bash_safety
+from core.tools import register_tool
+from core.security import check_bash_safety
 
 if TYPE_CHECKING:
     from config import HarnessConfig

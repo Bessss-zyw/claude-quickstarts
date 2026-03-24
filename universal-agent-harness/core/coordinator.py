@@ -7,17 +7,17 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from agent_runner import AgentRunner, AgentResult
-from client import LLMClient
-from message_bus import MessageBus
-from middleware.token_tracker import TokenTracker
-from tools import ToolRegistry
-from tools.journal import compress_journal_if_needed, read_journal
-from tools.messaging import set_agent_names
+from core.agent_runner import AgentRunner, AgentResult
+from core.client import LLMClient
+from core.message_bus import MessageBus
+from core.middleware.token_tracker import TokenTracker
+from core.tools import ToolRegistry
+from core.tools.journal import compress_journal_if_needed, read_journal
+from core.tools.messaging import set_agent_names
 
 if TYPE_CHECKING:
-    from agent_registry import AgentRegistry
-    from config import HarnessConfig
+    from core.agent_registry import AgentRegistry
+    from core.config import HarnessConfig
 
 logger = logging.getLogger(__name__)
 

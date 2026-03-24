@@ -6,8 +6,8 @@ import json
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
-    from config import HarnessConfig
-    from message_bus import MessageBus
+    from core.config import HarnessConfig
+    from core.message_bus import MessageBus
 
 # Each tool module will register itself here via register_tool()
 _TOOL_DEFS: dict[str, dict] = {}   # name -> {"schema": {...}, "fn": callable}
@@ -36,14 +36,14 @@ class ToolRegistry:
         self.message_bus = message_bus
 
         # Import tool modules so they self-register
-        from tools import bash, filesystem, planning, messaging, journal  # noqa: F401
+        from core.tools import bash, filesystem, planning, messaging, journal  # noqa: F401
 
         # Inject runtime dependencies that tools need
-        from tools import bash as _bash_mod
-        from tools import filesystem as _fs_mod
-        from tools import planning as _plan_mod
-        from tools import messaging as _msg_mod
-        from tools import journal as _journal_mod
+        from core.tools import bash as _bash_mod
+        from core.tools import filesystem as _fs_mod
+        from core.tools import planning as _plan_mod
+        from core.tools import messaging as _msg_mod
+        from core.tools import journal as _journal_mod
 
         _bash_mod._CONFIG = config
         _fs_mod._CONFIG = config

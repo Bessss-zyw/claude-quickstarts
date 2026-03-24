@@ -7,8 +7,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from middleware.loop_detector import LoopDetector
-from middleware.token_tracker import TokenTracker
+from core.middleware.loop_detector import LoopDetector
+from core.middleware.token_tracker import TokenTracker
 
 if TYPE_CHECKING:
     from agent_registry import AgentDefinition

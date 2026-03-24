@@ -1,0 +1,66 @@
+# ── Universal Agent Harness — Task Template (YAML) ──
+#
+# Copy this file and fill in your task details.
+# Run:  python main.py --task your_task.yaml
+
+name: "my-task"
+
+goal: |
+  Describe what you want the agent team to accomplish.
+  Be specific about expected outputs and success criteria.
+
+context: |
+  Optional background information, constraints, or references.
+
+deliverables:
+  - path: result.md                    # relative to {working_dir}/output/
+    description: "Final report"
+  # - path: code.py
+  #   description: "Implementation"
+
+environment:
+  working_dir: /tmp/harness-workdir    # runtime state goes here (absolute path)
+  allowed_paths: []                    # external paths agents can read/write
+    # - /home/user/project/src
+  shell_preamble: []                   # prepended to every bash command
+    # - "conda activate myenv"
+
+agents:
+  # ── Coordinator (required) ──────────────────────────────────────
+  coordinator:
+    role: "Plan and coordinate task execution. Assign work to specialists."
+    model:
+      provider: nvidia                 # nvidia | openai | deepseek | custom
+      name: aws/anthropic/bedrock-claude-opus-4-6
+    tools:
+      - get_plan
+      - create_plan
+      - update_plan
+      - assign_task
+      - check_result
+      - check_all_results
+      - read_file
+
+  # ── Specialists (add as many as needed) ─────────────────────────
+  coder:
+    role: "Write and debug code as instructed."
+    model:
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-opus-4-6
+    tools:
+      - bash
+      - read_file
+      - write_file
+      - edit_file
+      - list_files
+      - search_files
+
+  # reviewer:
+  #   role: "Review code quality and correctness."
+  #   model:
+  #     provider: nvidia
+  #     name: aws/anthropic/bedrock-claude-sonnet-4-6
+  #   tools:
+  #     - read_file
+  #     - list_files
+  #     - search_files

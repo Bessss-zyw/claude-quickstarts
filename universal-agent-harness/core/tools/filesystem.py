@@ -6,8 +6,8 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from tools import register_tool
-from security import is_path_allowed
+from core.tools import register_tool
+from core.security import is_path_allowed
 
 if TYPE_CHECKING:
     from config import HarnessConfig
