@@ -1,34 +1,59 @@
-# ── Universal Agent Harness — Task Template (YAML) ──
+# ── Universal Agent Harness — Task Template (YAML) ──────────────────────
 #
 # Copy this file and fill in your task details.
 # Run:  python main.py --task your_task.yaml
+#
+# This template defines a full 5-agent team. Remove or add agents as
+# needed — only "coordinator" is required.  Each agent can use a
+# different model/provider.
 
-name: "my-task"
+# ── Task description ────────────────────────────────────────────────────
+
+name: "TODO: your-task-name"           # short identifier (used in logs)
 
 goal: |
-  Describe what you want the agent team to accomplish.
+  TODO: Describe what you want the agent team to accomplish.
   Be specific about expected outputs and success criteria.
+  Multi-line is fine — this is the main instruction the coordinator sees.
 
 context: |
-  Optional background information, constraints, or references.
+  TODO: Optional background information, constraints, or references.
+  Leave empty or remove this field if not needed.
 
-deliverables:
-  - path: result.md                    # relative to {working_dir}/output/
-    description: "Final report"
-  # - path: code.py
-  #   description: "Implementation"
+deliverables:                          # at least one expected output
+  - path: report.md                    # relative to {working_dir}/output/
+    description: "Final analysis report"
+  # - path: optimized_kernel.py
+  #   description: "Optimized implementation"
+
+# ── Environment ─────────────────────────────────────────────────────────
 
 environment:
-  working_dir: /tmp/harness-workdir    # runtime state goes here (absolute path)
-  allowed_paths: []                    # external paths agents can read/write
-    # - /home/user/project/src
-  shell_preamble: []                   # prepended to every bash command
+  working_dir: /tmp/harness-workdir    # absolute path; runtime state goes here
+  allowed_paths:                       # external paths agents can read/write
+    []
+    # - /home/user/project/src         # e.g. source code repo
+    # - /home/user/data                # e.g. datasets
+  shell_preamble:                      # commands prepended to every bash call
+    []
+    # - "source /opt/conda/etc/profile.d/conda.sh"
     # - "conda activate myenv"
 
+# ── Agent team ──────────────────────────────────────────────────────────
+#
+# • "coordinator" is required — it plans, assigns, and reviews.
+# • Add as many specialists as your task needs.
+# • Each agent independently configures model provider + name.
+# • write_journal is auto-injected for every agent (no need to list it).
+# • Coordinator CANNOT use bash — it is blocked at runtime.
+
 agents:
-  # ── Coordinator (required) ──────────────────────────────────────
+  # ── Coordinator (required) ──────────────────────────────────────────
   coordinator:
-    role: "Plan and coordinate task execution. Assign work to specialists."
+    role: >
+      You are the project coordinator. Break the overall goal into concrete
+      steps, assign each step to the best-suited specialist, track progress
+      via the plan, and verify deliverables before declaring the task done.
     model:
       provider: nvidia                 # nvidia | openai | deepseek | custom
       name: aws/anthropic/bedrock-claude-opus-4-6
@@ -41,9 +66,12 @@ agents:
       - check_all_results
       - read_file
 
-  # ── Specialists (add as many as needed) ─────────────────────────
+  # ── Coder ───────────────────────────────────────────────────────────
   coder:
-    role: "Write and debug code as instructed."
+    role: >
+      You are a software engineer. Write, debug, and refactor code as
+      instructed. Save intermediate work to workspace/coder/ and final
+      deliverables to output/.
     model:
       provider: nvidia
       name: aws/anthropic/bedrock-claude-opus-4-6
@@ -55,12 +83,51 @@ agents:
       - list_files
       - search_files
 
-  # reviewer:
-  #   role: "Review code quality and correctness."
-  #   model:
-  #     provider: nvidia
-  #     name: aws/anthropic/bedrock-claude-sonnet-4-6
-  #   tools:
-  #     - read_file
-  #     - list_files
-  #     - search_files
+  # ── Tester ──────────────────────────────────────────────────────────
+  tester:
+    role: >
+      You are a QA engineer. Run tests in various environments, verify
+      correctness and edge cases, and report clear pass/fail results with
+      reproduction steps for any failures.
+    model:
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-sonnet-4-6
+    tools:
+      - bash
+      - read_file
+      - write_file
+      - list_files
+      - search_files
+
+  # ── Profiler ────────────────────────────────────────────────────────
+  profiler:
+    role: >
+      You are a performance engineer. Profile code, collect benchmarks,
+      identify bottlenecks, and provide actionable optimization
+      recommendations with supporting data.
+    model:
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-opus-4-6
+    tools:
+      - bash
+      - read_file
+      - write_file
+      - list_files
+      - search_files
+
+  # ── Code Manager ────────────────────────────────────────────────────
+  code_manager:
+    role: >
+      You are a code review and release manager. Review code for quality,
+      consistency, and best practices. Manage MR submissions and ensure
+      the codebase stays clean and well-documented.
+    model:
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-opus-4-6
+    tools:
+      - bash
+      - read_file
+      - write_file
+      - edit_file
+      - list_files
+      - search_files

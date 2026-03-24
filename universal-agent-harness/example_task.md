@@ -1,9 +1,15 @@
 ---
-name: "hello-world-demo"
+# Minimal smoke-test example (Markdown format)
+#
+# Smallest possible config: coordinator + 1 coder.
+# Run:  python main.py --task example_task.md --max-iterations 3
+
+name: "hello-world-smoke-test"
+context: "Minimal smoke test — verify the harness works."
 
 deliverables:
   - path: hello.py
-    description: "A Python script that prints a greeting message."
+    description: "A single-file Python script that prints a greeting."
 
 environment:
   working_dir: /tmp/agent-harness-test
@@ -12,44 +18,23 @@ environment:
 
 agents:
   coordinator:
-    role: "Plan and coordinate task execution. Assign work to specialists."
+    role: "Plan and coordinate. Assign the coding task to the coder."
     model:
-      provider: openai
-      name: gpt-4o
-    tools:
-      - get_plan
-      - create_plan
-      - update_plan
-      - assign_task
-      - check_result
-      - check_all_results
-      - read_file
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-opus-4-6
+    tools: [get_plan, create_plan, update_plan, assign_task, check_result, check_all_results, read_file]
 
   coder:
-    role: "Write Python code as instructed. Save outputs to the designated paths."
+    role: "Write Python code as instructed."
     model:
-      provider: openai
-      name: gpt-4o
-    tools:
-      - bash
-      - read_file
-      - write_file
-      - edit_file
-      - list_files
-      - search_files
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-opus-4-6
+    tools: [bash, read_file, write_file, edit_file, list_files]
 ---
 
-# Hello World Demo
+# Hello World Smoke Test
 
-Write a simple Python script that prints "Hello from Agent Harness!" and save
-it to the output directory.
+Write a Python script that prints "Hello from Agent Harness!" and save it to
+`output/hello.py`.
 
-## Context
-
-This is a minimal test task to verify the harness works end-to-end.
-
-## Requirements
-
-1. The script should be a single `.py` file
-2. It should print exactly: `Hello from Agent Harness!`
-3. Save to `output/hello.py`
+This is a minimal test to verify the harness runs end-to-end.

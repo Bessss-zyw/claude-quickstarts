@@ -1,14 +1,21 @@
-# Example task.yaml for testing the Universal Agent Harness
-name: "hello-world-demo"
+# ── Minimal smoke-test example ──────────────────────────────────────────
+#
+# This is the smallest possible task configuration: coordinator + 1 coder.
+# Use it to verify the harness runs end-to-end.
+#
+# Run:  python main.py --task example_task.yaml --max-iterations 3
+
+name: "hello-world-smoke-test"
+
 goal: |
-  Write a simple Python script that prints "Hello from Agent Harness!"
-  and save it to the output directory.
-context: |
-  This is a minimal test task to verify the harness works end-to-end.
+  Write a Python script that prints "Hello from Agent Harness!" and save
+  it to output/hello.py.
+
+context: "Minimal smoke test — verify the harness works."
 
 deliverables:
   - path: hello.py
-    description: "A Python script that prints a greeting message."
+    description: "A single-file Python script that prints a greeting."
 
 environment:
   working_dir: /tmp/agent-harness-test
@@ -17,10 +24,10 @@ environment:
 
 agents:
   coordinator:
-    role: "Plan and coordinate task execution. Assign work to specialists."
+    role: "Plan and coordinate. Assign the coding task to the coder."
     model:
-      provider: openai
-      name: gpt-4o
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-opus-4-6
     tools:
       - get_plan
       - create_plan
@@ -31,14 +38,13 @@ agents:
       - read_file
 
   coder:
-    role: "Write Python code as instructed. Save outputs to the designated paths."
+    role: "Write Python code as instructed."
     model:
-      provider: openai
-      name: gpt-4o
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-opus-4-6
     tools:
       - bash
       - read_file
       - write_file
       - edit_file
       - list_files
-      - search_files
