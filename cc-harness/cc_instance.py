@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import subprocess
 import time
 
@@ -37,7 +38,7 @@ class CCInstance:
             cc_cmd += f" --allowedTools '{self.agent.allowlist}'"
 
         # Create tmux window and launch CC
-        cmd = f"cd {project_dir} && {cc_cmd}"
+        cmd = f"cd {shlex.quote(project_dir)} && {cc_cmd}"
         self._tmux(["new-window", "-t", self.tmux_session, "-n", self.window_name, cmd])
         logger.info("Started CC instance '%s' in %s", self.agent.name, project_dir)
 
@@ -117,6 +118,17 @@ class CCInstance:
             time.sleep(2)
         self.send("/compact")
         logger.info("Sent /compact to '%s'", self.agent.name)
+
+    # ── Logging ────────────────────────────────────────────────────────
+
+    def save_log(self, content: str) -> None:
+        """Append captured output to the agent's log file."""
+        import os
+        log_path = os.path.join(self.config.agents_log_dir, f"{self.agent.name}.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(content)
+            f.write("\n--- capture ---\n")
 
     # ── Internal ───────────────────────────────────────────────────────
 

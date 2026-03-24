@@ -68,6 +68,10 @@ class HarnessConfig:
         for d in (self.harness_path, self.agents_log_dir, self.output_path):
             os.makedirs(d, exist_ok=True)
 
+    def get_specialists(self) -> list[AgentDef]:
+        """Return non-coordinator agents."""
+        return [a for a in self.agents.values() if not a.is_coordinator]
+
 
 def parse_task_file(path: str) -> dict:
     """Auto-detect format and parse task file."""
@@ -111,6 +115,7 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
             role=spec.get("role", ""),
             project_dir=spec.get("project_dir", working_dir),
             allowlist=spec.get("allowlist"),
+            is_coordinator=(name == "coordinator"),
         )
 
     # Coordinator model

@@ -50,7 +50,7 @@ class Planner:
             return resp.choices[0].message.content or ""
         except Exception as e:
             logger.error("Opus API call failed: %s", e)
-            return f'{{"error": "{e}"}}'
+            return json.dumps({"error": str(e)})
 
     # ── Planning ───────────────────────────────────────────────────────
 
@@ -204,3 +204,14 @@ Generate the instruction."""
             "prompt_tokens": self._total_prompt,
             "completion_tokens": self._total_completion,
         }
+
+    @property
+    def token_usage(self) -> dict:
+        return self.get_token_usage()
+
+    def save_token_usage(self) -> None:
+        """Persist accumulated token usage to disk."""
+        import os
+        os.makedirs(os.path.dirname(self.config.token_usage_file), exist_ok=True)
+        with open(self.config.token_usage_file, "w", encoding="utf-8") as f:
+            json.dump(self.get_token_usage(), f, indent=2)

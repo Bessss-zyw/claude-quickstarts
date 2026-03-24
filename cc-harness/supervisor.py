@@ -125,13 +125,11 @@ def run(config: HarnessConfig) -> None:
 
     # Load existing plan if resuming
     plan = load_plan(config)
-    start_iteration = 1
     if plan is not None:
         log.info("Resuming from existing plan (%d steps)", len(plan["steps"]))
         # Re-derive active_agents from in_progress steps
         for step in get_in_progress_steps(plan):
             active_agents[step["assigned_to"]] = step["id"]
-        start_iteration = 2  # skip plan creation
 
     iteration = 0
     try:
@@ -142,9 +140,8 @@ def run(config: HarnessConfig) -> None:
             # ── Phase 1: Create or update plan via Opus API ───────────
             if plan is None:
                 log.info("Creating initial plan...")
-                steps = planner.create_plan(
-                    config.task_goal, config.task_context, specialists,
-                )
+                specialists_dict = {a.name: a for a in specialists}
+                steps = planner.create_plan(specialists_dict)
                 plan = make_plan_dict(steps)
                 save_plan(config, plan)
                 append_history(config, {
@@ -155,7 +152,8 @@ def run(config: HarnessConfig) -> None:
             else:
                 # Evaluate and replan
                 log.info("Evaluating progress and replanning...")
-                decisions = planner.evaluate_and_replan(plan, results, specialists)
+                specialists_dict = {a.name: a for a in specialists}
+                decisions = planner.evaluate_and_replan(plan["steps"], specialists_dict)
                 append_history(config, {
                     "event": "replan",
                     "reasoning": decisions.get("reasoning", ""),
@@ -213,10 +211,19 @@ def run(config: HarnessConfig) -> None:
                 if agent_name in active_agents:
                     continue  # agent is busy
 
-                # Generate instruction
+                # Generate instruction — check depends_on first
+                deps = step.get("depends_on", [])
+                if deps:
+                    all_deps_done = all(
+                        any(s["id"] == dep_id and s["status"] == "done" for s in plan["steps"])
+                        for dep_id in deps
+                    )
+                    if not all_deps_done:
+                        continue  # dependencies not met yet
+
                 recent_output = instances[agent_name].capture(lines=50)
                 instruction = planner.generate_instruction(
-                    config.agents[agent_name], step, recent_output,
+                    config.agents[agent_name], step["description"], recent_output,
                 )
                 instances[agent_name].send(instruction)
                 step["status"] = "in_progress"
@@ -293,9 +300,16 @@ def run(config: HarnessConfig) -> None:
                 for step in get_pending_steps(plan):
                     agent_name = step["assigned_to"]
                     if agent_name in instances and agent_name not in active_agents:
+                        # Check depends_on
+                        deps = step.get("depends_on", [])
+                        if deps and not all(
+                            any(s["id"] == d and s["status"] == "done" for s in plan["steps"])
+                            for d in deps
+                        ):
+                            continue
                         recent_output = instances[agent_name].capture(lines=50)
                         instruction = planner.generate_instruction(
-                            config.agents[agent_name], step, recent_output,
+                            config.agents[agent_name], step["description"], recent_output,
                         )
                         instances[agent_name].send(instruction)
                         step["status"] = "in_progress"
@@ -357,7 +371,7 @@ def main() -> None:
             log.info("Loaded .env from %s", env_dir)
             break
 
-    config = load_config(args.task, args.max_iterations)
+    config = load_config(args.task, max_iterations=args.max_iterations)
     log.info("Task: %s | Working dir: %s", config.task_name, config.working_dir)
     log.info("Agents: %s", list(config.agents.keys()))
 
