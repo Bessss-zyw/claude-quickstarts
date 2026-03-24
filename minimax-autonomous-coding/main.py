@@ -65,10 +65,15 @@ Examples:
   # Use nvm
   python main.py --project-dir ./my_project --shell-preamble "nvm use 20"
 
+  # NVIDIA internal Inference Hub (free for employees, approved for NVIDIA data)
+  python main.py --provider nvidia --project-dir ./my_project
+  python main.py --provider nvidia --model aws/anthropic/bedrock-claude-opus-4-6 --project-dir ./my_project
+
 Environment Variables:
   MINIMAX_API_KEY    MiniMax API key (for --provider minimax)
   OPENAI_API_KEY     OpenAI API key (for --provider openai)
   DEEPSEEK_API_KEY   DeepSeek API key (for --provider deepseek)
+  NVIDIA_API_KEY     NVIDIA Inference Hub key (for --provider nvidia, get from https://inference.nvidia.com/key-management)
   LLM_API_KEY        Generic API key (for --provider custom)
         """,
     )
@@ -83,7 +88,7 @@ Environment Variables:
         "--provider",
         type=str,
         default="minimax",
-        choices=["minimax", "openai", "deepseek", "custom"],
+        choices=["minimax", "openai", "deepseek", "nvidia", "custom"],
         help="LLM provider (default: minimax)",
     )
     parser.add_argument(

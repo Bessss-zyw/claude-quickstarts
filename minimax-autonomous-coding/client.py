@@ -1,9 +1,9 @@
 """
-MiniMax API Client
-==================
+LLM API Client
+===============
 
-OpenAI-compatible client for MiniMax M2.7 API.
-Supports tool calling (function calling) via the OpenAI SDK.
+OpenAI-compatible client supporting multiple providers:
+MiniMax, OpenAI, DeepSeek, NVIDIA Inference Hub, or any custom endpoint.
 """
 
 import os
@@ -28,6 +28,11 @@ PROVIDERS = {
         "base_url": "https://api.deepseek.com",
         "default_model": "deepseek-chat",
         "env_key": "DEEPSEEK_API_KEY",
+    },
+    "nvidia": {
+        "base_url": "https://inference-api.nvidia.com/v1",
+        "default_model": "aws/anthropic/bedrock-claude-sonnet-4-5-v1",
+        "env_key": "NVIDIA_API_KEY",
     },
     "custom": {
         "base_url": None,  # must set via --base-url
