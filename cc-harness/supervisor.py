@@ -68,6 +68,18 @@ def all_done(plan: dict) -> bool:
     return all(s["status"] == "done" for s in plan["steps"])
 
 
+def gather_prior_findings(plan: dict, step: dict) -> str:
+    """Collect findings from a step's dependencies for context injection."""
+    deps = step.get("depends_on", [])
+    if not deps:
+        return ""
+    parts = []
+    for s in plan["steps"]:
+        if s["id"] in deps and s.get("findings"):
+            parts.append(f"[Step {s['id']} — {s['assigned_to']}]: {s['findings'][:400]}")
+    return "\n".join(parts)
+
+
 # ── History log ───────────────────────────────────────────────────────────
 
 def append_history(config: HarnessConfig, entry: dict) -> None:
@@ -251,8 +263,10 @@ def run(config: HarnessConfig) -> None:
                         continue  # dependencies not met yet
 
                 recent_output = instances[agent_name].capture(lines=50)
+                prior = gather_prior_findings(plan, step)
                 instruction = planner.generate_instruction(
                     config.agents[agent_name], step["description"], recent_output,
+                    output_path=config.output_path, prior_findings=prior,
                 )
                 instances[agent_name].send(instruction)
                 step["status"] = "in_progress"
@@ -341,8 +355,10 @@ def run(config: HarnessConfig) -> None:
                         ):
                             continue
                         recent_output = instances[agent_name].capture(lines=50)
+                        prior = gather_prior_findings(plan, step)
                         instruction = planner.generate_instruction(
                             config.agents[agent_name], step["description"], recent_output,
+                            output_path=config.output_path, prior_findings=prior,
                         )
                         instances[agent_name].send(instruction)
                         step["status"] = "in_progress"

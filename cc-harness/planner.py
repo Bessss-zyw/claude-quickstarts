@@ -126,7 +126,7 @@ Create the execution plan as JSON."""
         """Evaluate completed steps and decide next actions."""
         plan_text = "\n".join(
             f"  Step {s['id']} [{s['status']}] ({s['assigned_to']}): {s['description']}"
-            + (f"\n    Result: {s['result'][:300]}" if s.get('result') else "")
+            + (f"\n    Findings: {s['findings'][:300]}" if s.get('findings') else "")
             for s in plan_steps
         )
         agent_names = list(agents.keys())
@@ -144,9 +144,15 @@ Output ONLY valid JSON:
 
 Rules:
 - Only dispatch steps whose dependencies are all "done"
-- If a step failed, decide whether to retry or skip
-- Set is_complete=true only when ALL deliverables should exist
-- Instructions must be specific and actionable (not vague)"""
+- Carefully review the Findings of completed steps. If findings indicate
+  failure (error messages, "file not found", exceptions, "FAIL", etc.),
+  update that step's status to "failed" and decide whether to retry with
+  corrected instructions or skip it
+- Set is_complete=true only when ALL deliverables should exist AND the
+  findings confirm successful execution
+- Instructions must be specific and actionable (not vague)
+- When generating instructions for downstream steps, incorporate relevant
+  findings from upstream steps (e.g. file paths, output values)"""
 
         user = f"""Task: {self.config.task_name}
 Goal: {self.config.task_goal}
@@ -174,21 +180,43 @@ What should happen next?"""
     # ── Instruction Generation ─────────────────────────────────────────
 
     def generate_instruction(
-        self, agent: "AgentDef", step_desc: str, pane_context: str
+        self,
+        agent: "AgentDef",
+        step_desc: str,
+        pane_context: str,
+        *,
+        output_path: str = "",
+        prior_findings: str = "",
     ) -> str:
         """Generate a specific instruction for a specialist CC instance."""
+        path_info = ""
+        if output_path:
+            path_info = f"""
+Working directory: {agent.project_dir}
+Output directory: {output_path}
+All deliverable files go in the output directory. Use paths relative to the
+working directory (e.g. "output/hello.py", not just "hello.py")."""
+
+        prior_section = ""
+        if prior_findings:
+            prior_section = f"""
+
+Results from prior steps (use these to inform your instruction):
+{prior_findings[:1500]}"""
+
         system = f"""You are supervising a Claude Code agent named "{agent.name}".
 Role: {agent.role}
-
+{path_info}
 Generate ONE clear, actionable instruction for this agent. Be specific about:
 - What to do
-- What files to read/create/modify
+- What files to read/create/modify (use correct paths!)
 - What commands to run
 - What output to produce
 
 Output ONLY the instruction text. No preamble, no explanation."""
 
         user = f"""Task step: {step_desc}
+{prior_section}
 
 Recent agent output (last screen):
 {pane_context[-2000:]}
