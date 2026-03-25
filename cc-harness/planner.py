@@ -225,6 +225,47 @@ Generate the instruction."""
 
         return self._call(system, user, temperature=0.1).strip()
 
+    # ── Permission review ────────────────────────────────────────────────
+
+    def review_permission(
+        self, agent_name: str, step_desc: str, prompt_text: str
+    ) -> bool:
+        """Ask the coordinator whether a dangerous permission should be allowed.
+
+        Returns True to approve, False to reject.
+        """
+        system = """You are a security reviewer for an automated coding system.
+A specialist agent is requesting permission to perform a potentially dangerous
+operation. Based on the task context, decide whether to ALLOW or DENY.
+
+Output ONLY valid JSON: {"allow": true/false, "reason": "brief explanation"}
+
+Guidelines:
+- ALLOW if the operation is clearly needed for the task (e.g. removing a temp
+  file the agent created, cleaning build artifacts)
+- DENY if the operation could cause data loss, affect files outside the
+  working directory, or is disproportionate to the task
+- When in doubt, DENY"""
+
+        user = f"""Agent: {agent_name}
+Current task step: {step_desc}
+
+Permission prompt:
+{prompt_text[:1000]}
+
+Should this be allowed?"""
+
+        raw = self._call(system, user, temperature=0.0)
+
+        try:
+            start = raw.index("{")
+            end = raw.rindex("}") + 1
+            result = json.loads(raw[start:end])
+            return bool(result.get("allow", False))
+        except (ValueError, json.JSONDecodeError):
+            logger.warning("Failed to parse permission review response: %s", raw[:200])
+            return False  # deny on parse failure
+
     # ── Token tracking ─────────────────────────────────────────────────
 
     def get_token_usage(self) -> dict:

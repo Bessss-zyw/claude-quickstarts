@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import AgentDef, HarnessConfig, load_config, parse_task_file
 from state_detector import (
-    PaneState, detect_state, extract_last_response, get_context_pct, get_cost,
+    PaneState, classify_permission, detect_state, extract_last_response,
+    get_context_pct, get_cost,
 )
 
 
@@ -202,6 +203,94 @@ class TestExtractLastResponse(unittest.TestCase):
         result = extract_last_response(output)
         self.assertIn("[truncated]", result)
         self.assertLessEqual(len(result), 3100)
+
+
+class TestClassifyPermission(unittest.TestCase):
+
+    def test_safe_trust_folder(self):
+        output = " ❯ 1. Yes, I trust this folder\n   2. No, exit\n Enter to confirm"
+        state, prompt_text, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.PERMISSION)
+        self.assertFalse(is_dangerous)
+
+    def test_safe_allow_tool(self):
+        output = "Allow this action? [y/N]\nBash(python hello.py)"
+        state, prompt_text, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.PERMISSION)
+        self.assertFalse(is_dangerous)
+
+    def test_safe_allow_once(self):
+        output = "Allow once\nAllow always"
+        state, _, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.PERMISSION)
+        self.assertFalse(is_dangerous)
+
+    def test_dangerous_rm_rf(self):
+        output = "Do you want to proceed? [y/N]\nBash(rm -rf /tmp/important)"
+        state, prompt_text, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.PERMISSION)
+        self.assertTrue(is_dangerous)
+        self.assertIn("rm -rf", prompt_text)
+
+    def test_dangerous_sudo(self):
+        output = "Allow this action? [y/N]\nBash(sudo apt-get purge something)"
+        state, _, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.PERMISSION)
+        self.assertTrue(is_dangerous)
+
+    def test_dangerous_force_push(self):
+        output = "Do you want to proceed? [y/N]\nBash(git push --force origin main)"
+        state, _, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.PERMISSION)
+        self.assertTrue(is_dangerous)
+
+    def test_dangerous_reset_hard(self):
+        output = "Allow this action? [y/N]\nBash(git reset --hard HEAD~5)"
+        state, _, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.PERMISSION)
+        self.assertTrue(is_dangerous)
+
+    def test_dangerous_delete_keyword(self):
+        output = "Do you want to proceed? [y/N]\nThis will delete all files in the directory"
+        state, _, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.PERMISSION)
+        self.assertTrue(is_dangerous)
+
+    def test_not_permission_returns_state(self):
+        output = "  ❯"
+        state, prompt_text, is_dangerous = classify_permission(output)
+        self.assertEqual(state, PaneState.IDLE)
+        self.assertEqual(prompt_text, "")
+        self.assertFalse(is_dangerous)
+
+
+class TestReviewPermission(unittest.TestCase):
+
+    def _make_planner(self):
+        from planner import Planner
+        cfg = HarnessConfig(
+            task_file="x", working_dir="/tmp",
+            task_name="test", task_goal="do stuff",
+            coordinator_base_url="http://fake", coordinator_api_key="fake",
+        )
+        with patch("planner.OpenAI"):
+            p = Planner(cfg)
+        return p
+
+    def test_approve(self):
+        p = self._make_planner()
+        with patch.object(p, "_call", return_value='{"allow": true, "reason": "needed for task"}'):
+            self.assertTrue(p.review_permission("coder", "clean build", "rm -rf build/"))
+
+    def test_deny(self):
+        p = self._make_planner()
+        with patch.object(p, "_call", return_value='{"allow": false, "reason": "too risky"}'):
+            self.assertFalse(p.review_permission("coder", "write code", "sudo rm -rf /"))
+
+    def test_deny_on_parse_failure(self):
+        p = self._make_planner()
+        with patch.object(p, "_call", return_value="I cannot parse this"):
+            self.assertFalse(p.review_permission("coder", "step", "prompt"))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

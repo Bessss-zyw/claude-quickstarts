@@ -23,7 +23,9 @@ from dotenv import load_dotenv
 from cc_instance import CCInstance
 from config import AgentDef, HarnessConfig, load_config
 from planner import Planner
-from state_detector import PaneState, detect_state, extract_last_response, get_context_pct
+from state_detector import (
+    PaneState, classify_permission, detect_state, extract_last_response, get_context_pct,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -298,8 +300,38 @@ def run(config: HarnessConfig) -> None:
                     state = detect_state(output)
 
                     if state == PaneState.PERMISSION:
-                        cc.approve_permission()
-                        log.info("[%s] auto-approved permission", agent_name)
+                        _, prompt_text, is_dangerous = classify_permission(output)
+                        if not is_dangerous:
+                            cc.approve_permission()
+                            log.info("[%s] auto-approved safe permission", agent_name)
+                        else:
+                            # Find current step description for context
+                            step_desc = ""
+                            for s in plan["steps"]:
+                                if s["id"] == step_id:
+                                    step_desc = s["description"]
+                                    break
+                            log.warning("[%s] dangerous permission detected: %s",
+                                        agent_name, prompt_text[:200])
+                            approved = planner.review_permission(
+                                agent_name, step_desc, prompt_text,
+                            )
+                            if approved:
+                                cc.approve_permission()
+                                log.info("[%s] coordinator approved dangerous permission",
+                                         agent_name)
+                            else:
+                                cc.reject_permission()
+                                log.warning("[%s] coordinator REJECTED dangerous permission",
+                                            agent_name)
+                            append_history(config, {
+                                "event": "permission_review",
+                                "agent": agent_name,
+                                "step_id": step_id,
+                                "prompt_text": prompt_text[:500],
+                                "is_dangerous": True,
+                                "approved": approved,
+                            })
 
                     elif state == PaneState.IDLE:
                         # Grace period: ignore IDLE right after dispatch

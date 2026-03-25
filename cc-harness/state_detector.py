@@ -82,6 +82,52 @@ def get_cost(pane_output: str) -> str | None:
     return m.group(0) if m else None
 
 
+# ── Permission classification ─────────────────────────────────────────────
+
+_DANGEROUS_KEYWORDS = re.compile(
+    r"\brm\s+-r|\brm\s+/|\brmdir\b|\bdelete\b|\bremove\b|\bdrop\b"
+    r"|\bformat\b|\breset\s+--hard\b|\bforce\s+push\b|\b--force\b"
+    r"|\bchmod\s+777\b|\bsudo\b|\bmkfs\b|\bdd\s+if="
+    r"|\bgit\s+push\s+.*--force\b|\bgit\s+clean\s+-f",
+    re.IGNORECASE,
+)
+
+_SAFE_PATTERNS = re.compile(
+    r"Yes, I trust this folder|Enter to confirm|"
+    r"Allow once|Allow always|Allow this action|"
+    r"Do you want to proceed",
+)
+
+
+def classify_permission(pane_output: str) -> tuple[PaneState, str, bool]:
+    """Classify a permission prompt as safe or dangerous.
+
+    Returns:
+        (state, prompt_text, is_dangerous)
+        - state: PaneState.PERMISSION if a permission prompt is found, else current state
+        - prompt_text: the extracted permission-related lines
+        - is_dangerous: True if the prompt contains destructive operation keywords
+    """
+    state = detect_state(pane_output)
+    if state != PaneState.PERMISSION:
+        return state, "", False
+
+    # Extract permission-related lines (last 20 lines)
+    tail_lines = pane_output.splitlines()[-20:]
+    prompt_lines = []
+    for line in tail_lines:
+        stripped = line.strip()
+        if stripped and (_PERMISSION_PATTERNS.search(stripped) or _DANGEROUS_KEYWORDS.search(stripped)):
+            prompt_lines.append(stripped)
+    # If no specific lines matched, take all non-empty tail lines for context
+    if not prompt_lines:
+        prompt_lines = [l.strip() for l in tail_lines if l.strip()]
+
+    prompt_text = "\n".join(prompt_lines)
+    is_dangerous = bool(_DANGEROUS_KEYWORDS.search(prompt_text))
+    return state, prompt_text, is_dangerous
+
+
 def extract_last_response(pane_output: str) -> str:
     """Extract the last CC response (text between the last two ❯ prompts).
 

@@ -120,6 +120,11 @@ class CCInstance:
         self._tmux(["send-keys", "-t", self.target, "", "Enter"])
         logger.info("Auto-approved permission for '%s'", self.agent.name)
 
+    def reject_permission(self) -> None:
+        """Press Escape to reject/cancel a permission prompt."""
+        self._tmux(["send-keys", "-t", self.target, "Escape"])
+        logger.info("Rejected permission for '%s'", self.agent.name)
+
     def send_compact(self, hint: str = "") -> None:
         """Send /compact with optional context preservation hint."""
         if hint:
