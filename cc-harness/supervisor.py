@@ -8,7 +8,9 @@ Usage:
 from __future__ import annotations
 
 import os
-os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+import sys
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"   # for child processes
+sys.dont_write_bytecode = True                  # for current interpreter
 
 import argparse
 import json
