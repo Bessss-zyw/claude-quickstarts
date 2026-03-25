@@ -326,9 +326,12 @@ class TestCCInstance(unittest.TestCase):
         cfg = HarnessConfig(task_file="x", working_dir="/tmp")
         inst = CCInstance(agent, "sess", cfg)
         inst.send("do something")
-        args = mock_run.call_args[0][0]
-        self.assertEqual(args[0], "tmux")
-        self.assertIn("send-keys", args)
+        # send() calls send-keys first, then capture-pane to check for paste indicator.
+        # Verify the first call is the send-keys.
+        first_call_args = mock_run.call_args_list[0][0][0]
+        self.assertEqual(first_call_args[0], "tmux")
+        self.assertIn("send-keys", first_call_args)
+        self.assertIn("do something", first_call_args)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

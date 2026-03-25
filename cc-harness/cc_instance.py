@@ -99,8 +99,20 @@ class CCInstance:
     # ── Communication ──────────────────────────────────────────────────
 
     def send(self, text: str) -> None:
-        """Send text to the CC pane via tmux send-keys."""
+        """Send text to the CC pane via tmux send-keys.
+
+        After sending, checks for CC's collapsed paste indicator
+        ('[Pasted text #1 +N lines]') which appears for multi-line input
+        and requires an extra Enter to confirm submission.
+        """
         self._tmux(["send-keys", "-t", self.target, text, "Enter"])
+        # CC may collapse multi-line input into '[Pasted text ...]' and wait
+        # for Enter to confirm.  Poll briefly and confirm if needed.
+        time.sleep(2)
+        output = self.capture(lines=30)
+        if "[Pasted text" in output:
+            self._tmux(["send-keys", "-t", self.target, "", "Enter"])
+            logger.debug("Confirmed pasted text for '%s'", self.agent.name)
         logger.debug("Sent to '%s': %s", self.agent.name, text[:150])
 
     def capture(self, lines: int = 200) -> str:
