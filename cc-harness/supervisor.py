@@ -102,6 +102,19 @@ def ensure_tmux_session(session_name: str) -> None:
     log.info("Created tmux session: %s", session_name)
 
 
+def kill_tmux_session(session_name: str) -> None:
+    """Kill the tmux session. Safe to call even if it doesn't exist."""
+    import subprocess
+    try:
+        subprocess.run(
+            ["tmux", "kill-session", "-t", session_name],
+            capture_output=True, timeout=10,
+        )
+        log.info("Killed tmux session: %s", session_name)
+    except Exception as e:
+        log.warning("Failed to kill tmux session '%s': %s", session_name, e)
+
+
 # ── Main loop ─────────────────────────────────────────────────────────────
 
 def run(config: HarnessConfig) -> None:
@@ -356,20 +369,21 @@ def run(config: HarnessConfig) -> None:
         if plan:
             save_plan(config, plan)
 
-    # ── Summary ───────────────────────────────────────────────────────────
-    log.info("=== DONE ===")
-    log.info("Token usage: %s", planner.token_usage)
-    if plan:
-        done_count = sum(1 for s in plan["steps"] if s["status"] == "done")
-        log.info("Plan: %d/%d steps done", done_count, len(plan["steps"]))
-    for d in config.deliverables:
-        path = os.path.join(config.output_path, d["path"])
-        status = "OK" if os.path.exists(path) else "MISSING"
-        log.info("Deliverable [%s]: %s", status, d["path"])
+        # ── Summary ───────────────────────────────────────────────────────
+        log.info("=== DONE ===")
+        log.info("Token usage: %s", planner.token_usage)
+        if plan:
+            done_count = sum(1 for s in plan["steps"] if s["status"] == "done")
+            log.info("Plan: %d/%d steps done", done_count, len(plan["steps"]))
+        for d in config.deliverables:
+            path = os.path.join(config.output_path, d["path"])
+            status = "OK" if os.path.exists(path) else "MISSING"
+            log.info("Deliverable [%s]: %s", status, d["path"])
 
-    # Optionally stop CC instances
-    for cc in instances.values():
-        cc.stop()
+        # Stop CC instances and kill tmux session
+        for cc in instances.values():
+            cc.stop()
+        kill_tmux_session(config.tmux_session)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────
