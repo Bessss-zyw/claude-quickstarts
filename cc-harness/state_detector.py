@@ -25,10 +25,11 @@ _ACTIVE_PATTERNS = re.compile(
 
 _PERMISSION_PATTERNS = re.compile(
     r"Do you want to proceed|Allow this action|"
-    r"\[y/N\]|\[Y/n\]|Allow once|Allow always"
+    r"\[y/N\]|\[Y/n\]|Allow once|Allow always|"
+    r"Yes, I trust this folder|Enter to confirm"
 )
 
-_IDLE_PATTERN = re.compile(r"^\s*❯", re.MULTILINE)
+_IDLE_PATTERN = re.compile(r"^\s*❯\s*$", re.MULTILINE)
 
 _EXPIRED_PATTERNS = re.compile(
     r"Timed out waiting for job step|End crun session|"
