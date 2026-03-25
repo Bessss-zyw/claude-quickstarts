@@ -38,6 +38,37 @@ An autonomous coding agent powered by the Claude Agent SDK. This project demonst
 
 [Go to Autonomous Coding Agent Quickstart](./autonomous-coding)
 
+### Universal Agent Harness
+
+A multi-agent coordination framework that orchestrates LLM-powered specialist agents to execute complex tasks via a coordinator-driven ReAct loop. Specialists are lightweight API-based agents with reimplemented tools (bash, read_file, etc.), communicating through a file-based message bus. Supports multiple LLM providers (NVIDIA Inference Hub, OpenAI, DeepSeek).
+
+- **Coordinator**: LLM with tool calling (ReAct loop)
+- **Specialists**: API-only agents with built-in tools
+- **Communication**: File-based message bus
+- **Best for**: Lightweight multi-agent tasks where full Claude Code capabilities are not needed
+
+[Go to Universal Agent Harness](./universal-agent-harness)
+
+### CC-Harness (Claude Code Native Multi-Agent)
+
+Orchestrates multiple full Claude Code instances as specialist agents, coordinated by Opus API via tmux. Each specialist is a complete CC process that inherits MCP servers, skills, and all tools from its `project_dir/.claude/` configuration. The coordinator (Opus API) creates dependency-aware plans, dispatches instructions, monitors execution, and replans on failure.
+
+- **Coordinator**: Pure Opus API (plan, evaluate, replan)
+- **Specialists**: Full Claude Code instances (MCP, skills, all tools)
+- **Communication**: tmux send-keys / capture-pane
+- **Safety**: Permission filter — safe prompts auto-approved, dangerous ops (rm, sudo, force push) require coordinator review
+- **Best for**: Complex tasks requiring full CC capabilities per specialist (coding, testing, profiling, review)
+
+| | universal-agent-harness | cc-harness |
+|---|---|---|
+| Specialists | Reimplemented tools | Full Claude Code instances |
+| MCP/Skills | Not available | Inherited from project_dir/.claude/ |
+| Coordinator | LLM + tool calling (ReAct) | Pure Opus API |
+| Communication | File-based message bus | tmux send-keys / capture-pane |
+| Overhead | Lower (API only) | Higher (N CC processes) but richer |
+
+[Go to CC-Harness](./cc-harness)
+
 ## General Usage
 
 Each quickstart project comes with its own README and setup instructions. Generally, you'll follow these steps:
