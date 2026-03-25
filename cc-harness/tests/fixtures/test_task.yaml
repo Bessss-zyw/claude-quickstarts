@@ -1,0 +1,24 @@
+name: "test-task"
+goal: "Write hello.py"
+context: "Unit test fixture"
+deliverables:
+  - path: hello.py
+    description: "Test output"
+environment:
+  working_dir: /tmp/cc-harness-test
+  tmux_session: test-harness
+  allowed_paths: []
+  shell_preamble: []
+agents:
+  coordinator:
+    role: "Coordinate"
+    model:
+      provider: nvidia
+      name: aws/anthropic/bedrock-claude-opus-4-6
+  coder:
+    role: "Write code"
+    project_dir: /tmp/cc-harness-test
+    allowlist: "Bash,Read,Write"
+  tester:
+    role: "Run tests"
+    project_dir: /tmp/cc-harness-test

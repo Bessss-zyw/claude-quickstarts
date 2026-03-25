@@ -107,9 +107,9 @@ Supports both `.yaml` and `.md` (YAML frontmatter + markdown body) formats.
 | `context` | No | Background information |
 | `deliverables` | Yes | List of `{path, description}` relative to `output/` |
 | `environment.working_dir` | Yes | Runtime directory for .harness/ and output/ |
-| `agents.coordinator` | Yes | Must exist (pure API, not a CC instance) |
+| `agents.coordinator` | Yes | Must exist; pure API coordinator, NOT a CC instance. Its `project_dir` is ignored. |
 | `agents.{name}.role` | Yes | Role description |
-| `agents.{name}.project_dir` | Yes | Directory where CC runs (`--project-dir`) |
+| `agents.{name}.project_dir` | Yes | Directory where CC runs (`--project-dir`). CC inherits `.claude/` config (MCP, skills, rules) from this dir. |
 | `agents.{name}.allowlist` | No | CC `--allowedTools` filter |
 | `harness.tmux_session` | No | tmux session name (default: `harness`) |
 | `harness.compact_threshold` | No | Context % trigger for /compact (default: 60) |
@@ -155,4 +155,51 @@ To start fresh, delete `.harness/`.
 | Variable | Description |
 |----------|-------------|
 | `NVIDIA_API_KEY` | Required. API key for Opus coordinator calls |
-| `NVIDIA_BASE_URL` | Optional. Override inference endpoint |
+| `NVIDIA_BASE_URL` | Optional. Override inference endpoint (default: `https://inference-api.nvidia.com/v1`) |
+
+## Permission Handling
+
+Each specialist CC instance will prompt for tool permissions on first use. The harness auto-approves by sending Enter when it detects a permission prompt.
+
+For smoother operation, pre-authorize tools in each specialist's project directory:
+
+```json
+// {project_dir}/.claude/settings.json
+{
+  "permissions": {
+    "allow": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
+  }
+}
+```
+
+Alternatively, launch specialists with broader permissions via the `allowlist` field in your task file.
+
+## Templates
+
+A full 5-agent team template is provided at `templates/task_template.md`. Copy and customize:
+
+```bash
+cp templates/task_template.md my_task.md
+# Edit my_task.md with your task details
+python supervisor.py --task my_task.md
+```
+
+## Running Tests
+
+```bash
+cd cc-harness
+python -m unittest tests.test_harness -v
+```
+
+All tests are pure unit tests (no tmux/CC required) using mocks.
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| CC instance never reaches `idle` | `claude` CLI not in PATH, or tmux window failed to start | Run `which claude` and `tmux ls` to verify |
+| State stuck on `UNKNOWN` | Pane output doesn't match any detection pattern | `tmux capture-pane -t harness:{name} -p` to inspect raw output; update `state_detector.py` patterns if CC version changed |
+| Permission auto-approve not working | CC shows a selection menu (Allow once / Allow always) instead of simple y/N | Pre-authorize tools in `.claude/settings.json` (see Permission Handling above) |
+| `NVIDIA_API_KEY` error | API key not set or expired | Check `echo $NVIDIA_API_KEY`; create `.env` file next to task file |
+| Steps all `pending`, nothing dispatched | `depends_on` cycle or unknown `assigned_to` agent name | Check `plan.json` — agent names must match keys in `agents:` |
+| Context hits 100% and CC stops | Long-running task exceeded CC context window | Lower `compact_threshold` (e.g., 40) to trigger `/compact` earlier |
