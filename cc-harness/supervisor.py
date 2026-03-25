@@ -120,6 +120,10 @@ def run(config: HarnessConfig) -> None:
 
     # Track which agents are currently working (agent_name → step_id)
     active_agents: dict[str, int] = {}
+    # Track when each agent was dispatched (for grace period)
+    dispatch_times: dict[str, float] = {}
+    # Minimum seconds to wait after dispatch before checking for IDLE
+    _DISPATCH_GRACE = 15
     # Collect results per agent for replan
     results: dict[str, str] = {}
 
@@ -190,6 +194,7 @@ def run(config: HarnessConfig) -> None:
                 for agent_name, instruction in decisions.get("next_instructions", {}).items():
                     if agent_name in instances and agent_name not in active_agents:
                         instances[agent_name].send(instruction)
+                        dispatch_times[agent_name] = time.time()
                         # Find the relevant pending step for this agent
                         for step in plan["steps"]:
                             if step["assigned_to"] == agent_name and step["status"] == "pending":
@@ -228,6 +233,7 @@ def run(config: HarnessConfig) -> None:
                 instances[agent_name].send(instruction)
                 step["status"] = "in_progress"
                 active_agents[agent_name] = step["id"]
+                dispatch_times[agent_name] = time.time()
                 save_plan(config, plan)
                 log.info("Dispatched step %d to %s", step["id"], agent_name)
 
@@ -258,6 +264,9 @@ def run(config: HarnessConfig) -> None:
                         log.info("[%s] auto-approved permission", agent_name)
 
                     elif state == PaneState.IDLE:
+                        # Grace period: ignore IDLE right after dispatch
+                        if time.time() - dispatch_times.get(agent_name, 0) < _DISPATCH_GRACE:
+                            continue
                         # Agent finished its task
                         result_text = extract_last_response(output)
                         cc.save_log(output)
@@ -314,6 +323,7 @@ def run(config: HarnessConfig) -> None:
                         instances[agent_name].send(instruction)
                         step["status"] = "in_progress"
                         active_agents[agent_name] = step["id"]
+                        dispatch_times[agent_name] = time.time()
                         save_plan(config, plan)
                         log.info("Dispatched step %d to %s (during monitor)", step["id"], agent_name)
 

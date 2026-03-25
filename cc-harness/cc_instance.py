@@ -42,8 +42,12 @@ class CCInstance:
         self._tmux(["new-window", "-t", self.tmux_session, "-n", self.window_name, cmd])
         logger.info("Started CC instance '%s' in %s", self.agent.name, project_dir)
 
-        # Wait for CC to be ready (❯ prompt)
+        # Wait for CC to be ready (❯ prompt).
+        # During startup CC may show a "trust this folder" dialog or other
+        # permission prompts — auto-approve them so the instance reaches idle.
         start_time = time.time()
+        # Give CC a moment to fully render its initial screen
+        time.sleep(5)
         while time.time() - start_time < _STARTUP_TIMEOUT:
             output = self.capture()
             state = detect_state(output)
@@ -51,6 +55,11 @@ class CCInstance:
                 logger.info("CC instance '%s' is ready.", self.agent.name)
                 self._started = True
                 return
+            if state == PaneState.PERMISSION:
+                logger.info("CC instance '%s' has a permission/trust prompt — auto-approving.", self.agent.name)
+                self.approve_permission()
+                time.sleep(3)
+                continue
             time.sleep(3)
 
         logger.warning("CC instance '%s' did not reach idle state within %ds.",

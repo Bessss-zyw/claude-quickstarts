@@ -118,6 +118,9 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
             is_coordinator=(name == "coordinator"),
         )
 
+    # Harness-level settings (from "harness:" section in task file)
+    harness_cfg = data.get("harness", {})
+
     # Coordinator model
     coord_cfg = data.get("coordinator", {})
     base_url = os.environ.get("NVIDIA_BASE_URL", "https://inference-api.nvidia.com/v1")
@@ -131,11 +134,11 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
         task_context=data.get("context", ""),
         deliverables=data.get("deliverables", []),
         agents=agents,
-        tmux_session=env.get("tmux_session", "harness"),
-        max_iterations=overrides.get("max_iterations", data.get("max_iterations", 20)),
-        compact_threshold=data.get("compact_threshold", 60),
-        send_cooldown=data.get("send_cooldown", 30),
-        poll_interval=data.get("poll_interval", 15),
+        tmux_session=harness_cfg.get("tmux_session", "harness"),
+        max_iterations=overrides.get("max_iterations", harness_cfg.get("max_iterations", 20)),
+        compact_threshold=harness_cfg.get("compact_threshold", 60),
+        send_cooldown=harness_cfg.get("send_cooldown", 30),
+        poll_interval=harness_cfg.get("poll_interval", 15),
         coordinator_model=coord_cfg.get("model", "aws/anthropic/bedrock-claude-opus-4-6"),
         coordinator_base_url=base_url,
         coordinator_api_key=api_key,
