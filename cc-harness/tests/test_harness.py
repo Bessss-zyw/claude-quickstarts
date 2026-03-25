@@ -187,7 +187,7 @@ class TestGetCost(unittest.TestCase):
 class TestExtractLastResponse(unittest.TestCase):
 
     def test_between_prompts(self):
-        output = "  ❯ first command\nresponse line 1\nresponse line 2\n  ❯"
+        output = "  ❯\nfirst command\nresponse line 1\nresponse line 2\n  ❯"
         result = extract_last_response(output)
         self.assertIn("response line 1", result)
         self.assertIn("response line 2", result)
@@ -198,7 +198,7 @@ class TestExtractLastResponse(unittest.TestCase):
         self.assertIn("just some output", result)
 
     def test_truncation(self):
-        output = "  ❯ cmd\n" + "x" * 5000 + "\n  ❯"
+        output = "  ❯\n" + "x" * 5000 + "\n  ❯"
         result = extract_last_response(output)
         self.assertIn("[truncated]", result)
         self.assertLessEqual(len(result), 3100)

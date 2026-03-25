@@ -8,6 +8,47 @@ from dataclasses import dataclass, field
 
 import yaml
 
+
+def _slugify(name: str) -> str:
+    """Convert a task name to a safe tmux session name component."""
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", name).strip("-").lower()
+    return slug[:40] if slug else "default"
+
+
+import logging as _logging
+_log = _logging.getLogger(__name__)
+
+
+def _resolve_api_key() -> str:
+    """Resolve NVIDIA_API_KEY with fallback chain.
+
+    Priority:
+      1. Environment variable NVIDIA_API_KEY
+      2. Already loaded via .env (dotenv sets env vars)
+      3. Global ~/.nvcortex/secrets.env
+    """
+    # Check 1 & 2: environment variable (may have been set by dotenv already)
+    key = os.environ.get("NVIDIA_API_KEY", "")
+    if key:
+        _log.info("NVIDIA_API_KEY loaded from environment variable")
+        return key
+
+    # Check 3: global secrets file
+    global_secrets = os.path.expanduser("~/.nvcortex/secrets.env")
+    if os.path.isfile(global_secrets):
+        try:
+            from dotenv import dotenv_values
+            secrets = dotenv_values(global_secrets)
+            key = secrets.get("NVIDIA_API_KEY", "")
+            if key:
+                _log.info("NVIDIA_API_KEY loaded from %s", global_secrets)
+                return key
+        except Exception as e:
+            _log.warning("Failed to read %s: %s", global_secrets, e)
+
+    _log.warning("NVIDIA_API_KEY not found in env, .env, or ~/.nvcortex/secrets.env")
+    return ""
+
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
@@ -124,7 +165,7 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
     # Coordinator model
     coord_cfg = data.get("coordinator", {})
     base_url = os.environ.get("NVIDIA_BASE_URL", "https://inference-api.nvidia.com/v1")
-    api_key = os.environ.get("NVIDIA_API_KEY", "")
+    api_key = _resolve_api_key()
 
     cfg = HarnessConfig(
         task_file=task_file,
@@ -134,7 +175,7 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
         task_context=data.get("context", ""),
         deliverables=data.get("deliverables", []),
         agents=agents,
-        tmux_session=harness_cfg.get("tmux_session", "harness"),
+        tmux_session=harness_cfg.get("tmux_session", f"harness-{_slugify(data.get('name', 'default'))}"),
         max_iterations=overrides.get("max_iterations", harness_cfg.get("max_iterations", 20)),
         compact_threshold=harness_cfg.get("compact_threshold", 60),
         send_cooldown=harness_cfg.get("send_cooldown", 30),

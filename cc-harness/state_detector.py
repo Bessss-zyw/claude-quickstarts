@@ -88,7 +88,7 @@ def extract_last_response(pane_output: str) -> str:
     Returns at most ~3000 chars of the last response.
     """
     lines = pane_output.splitlines()
-    prompt_indices = [i for i, l in enumerate(lines) if re.match(r"^\s*❯", l)]
+    prompt_indices = [i for i, l in enumerate(lines) if re.match(r"^\s*❯\s*$", l)]
 
     if len(prompt_indices) < 2:
         # Can't find two prompts; return last 50 lines

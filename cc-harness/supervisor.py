@@ -7,10 +7,12 @@ Usage:
 
 from __future__ import annotations
 
+import os
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import json
 import logging
-import os
 import signal
 import sys
 import time
@@ -77,18 +79,27 @@ def append_history(config: HarnessConfig, entry: dict) -> None:
 # ── tmux session management ──────────────────────────────────────────────
 
 def ensure_tmux_session(session_name: str) -> None:
-    """Create the tmux session if it doesn't exist."""
+    """Create the tmux session if it doesn't exist.
+
+    Raises RuntimeError if a session with the same name already exists
+    (likely another supervisor instance).
+    """
     import subprocess
     result = subprocess.run(
         ["tmux", "has-session", "-t", session_name],
         capture_output=True, timeout=5,
     )
-    if result.returncode != 0:
-        subprocess.run(
-            ["tmux", "new-session", "-d", "-s", session_name],
-            capture_output=True, timeout=10, check=True,
+    if result.returncode == 0:
+        raise RuntimeError(
+            f"tmux session '{session_name}' already exists — another supervisor "
+            f"may be running. Kill it first or use a different task name / "
+            f"tmux_session in your task file."
         )
-        log.info("Created tmux session: %s", session_name)
+    subprocess.run(
+        ["tmux", "new-session", "-d", "-s", session_name],
+        capture_output=True, timeout=10, check=True,
+    )
+    log.info("Created tmux session: %s", session_name)
 
 
 # ── Main loop ─────────────────────────────────────────────────────────────
