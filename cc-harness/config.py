@@ -75,6 +75,7 @@ class HarnessConfig:
     compact_threshold: int = 60
     send_cooldown: int = 30
     poll_interval: int = 15
+    idle_confirm: int = 2
 
     # Coordinator model config
     coordinator_model: str = "aws/anthropic/bedrock-claude-opus-4-6"
@@ -180,6 +181,7 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
         compact_threshold=harness_cfg.get("compact_threshold", 60),
         send_cooldown=harness_cfg.get("send_cooldown", 30),
         poll_interval=harness_cfg.get("poll_interval", 15),
+        idle_confirm=harness_cfg.get("idle_confirm", 2),
         coordinator_model=coord_cfg.get("model", "aws/anthropic/bedrock-claude-opus-4-6"),
         coordinator_base_url=base_url,
         coordinator_api_key=api_key,

@@ -164,6 +164,8 @@ def run(config: HarnessConfig) -> None:
     dispatch_times: dict[str, float] = {}
     # Minimum seconds to wait after dispatch before checking for IDLE
     _DISPATCH_GRACE = 15
+    # Consecutive IDLE poll counts per agent (reset on non-IDLE states)
+    idle_counts: dict[str, int] = {}
     # Collect results per agent for replan
     results: dict[str, str] = {}
 
@@ -301,6 +303,10 @@ def run(config: HarnessConfig) -> None:
                     output = cc.capture()
                     state = detect_state(output)
 
+                    # Reset idle counter on any non-IDLE state
+                    if state != PaneState.IDLE:
+                        idle_counts.pop(agent_name, None)
+
                     if state == PaneState.PERMISSION:
                         _, prompt_text, is_dangerous = classify_permission(output)
                         if not is_dangerous:
@@ -339,7 +345,15 @@ def run(config: HarnessConfig) -> None:
                         # Grace period: ignore IDLE right after dispatch
                         if time.time() - dispatch_times.get(agent_name, 0) < _DISPATCH_GRACE:
                             continue
-                        # Agent finished its task
+                        # Require consecutive IDLE polls to confirm completion
+                        idle_counts[agent_name] = idle_counts.get(agent_name, 0) + 1
+                        if idle_counts[agent_name] < config.idle_confirm:
+                            log.debug("[%s] idle detected (%d/%d), waiting for confirmation",
+                                      agent_name, idle_counts[agent_name], config.idle_confirm)
+                            continue
+                        # Confirmed idle — agent finished its task
+                        log.info("[%s] confirmed idle after %d consecutive polls, marking done",
+                                 agent_name, idle_counts[agent_name])
                         result_text = extract_last_response(output)
                         cc.save_log(output)
 
@@ -352,7 +366,7 @@ def run(config: HarnessConfig) -> None:
                         save_plan(config, plan)
                         results[agent_name] = result_text
                         finished.append(agent_name)
-                        log.info("[%s] step %d completed", agent_name, step_id)
+                        idle_counts.pop(agent_name, None)
 
                     elif state == PaneState.EXPIRED:
                         log.error("[%s] session expired!", agent_name)
