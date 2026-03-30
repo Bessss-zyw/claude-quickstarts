@@ -31,6 +31,14 @@ class Planner:
         self._total_prompt = 0
         self._total_completion = 0
 
+    @staticmethod
+    def _strip_code_fences(text: str) -> str:
+        """Strip markdown code fences (```json ... ```) from LLM output."""
+        import re
+        # Match ```<optional lang>\n ... ``` patterns
+        stripped = re.sub(r"```\w*\s*\n?", "", text)
+        return stripped.strip()
+
     def _call(self, system: str, user: str, temperature: float = 0.0) -> str:
         """Make a single Opus API call. Returns the text response."""
         try:
@@ -94,9 +102,9 @@ Create the execution plan as JSON."""
 
         raw = self._call(system, user)
 
-        # Extract JSON from response
+        # Extract JSON from response (strip code fences first)
+        raw = self._strip_code_fences(raw)
         try:
-            # Try to find JSON array in the response
             start = raw.index("[")
             end = raw.rindex("]") + 1
             steps = json.loads(raw[start:end])
@@ -197,6 +205,7 @@ Available agents: {agent_names}
 What should happen next?"""
 
         raw = self._call(system, user)
+        raw = self._strip_code_fences(raw)
 
         try:
             start = raw.index("{")
@@ -307,6 +316,7 @@ Permission prompt:
 Should this be allowed?"""
 
         raw = self._call(system, user, temperature=0.0)
+        raw = self._strip_code_fences(raw)
 
         try:
             start = raw.index("{")
