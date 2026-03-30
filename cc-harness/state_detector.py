@@ -16,29 +16,45 @@ class PaneState(Enum):
 
 
 # ── Patterns ───────────────────────────────────────────────────────────────
+#
+# CC has three primary states, distinguished by the bottom of the pane:
+#
+#   PERMISSION:  ❯ followed by a numbered choice menu (❯ 1. Yes / 2. No)
+#                or other permission prompts (Esc to cancel, [y/N], etc.)
+#
+#   ACTIVE:      A spinner line like "Zigzagging… (17m 28s · ↓ 2.5k tokens)"
+#                The verb changes randomly (Thinking, Pondering, Noodling, …)
+#                Pattern: <Capitalized-verb>… or <Capitalized-verb>ing…
+#                Also: tool-use indicators (✢, ✽, * Verb)
+#
+#   IDLE:        A bare ❯ prompt on its own line (no menu items after it)
+#
+# Detection priority: EXPIRED > PERMISSION > ACTIVE > IDLE > UNKNOWN
+#
 
-_ACTIVE_PATTERNS = re.compile(
-    r"Shimmying|Doodling|Thinking|Plotting|Pondering|Cogitating|"
-    r"Bunning|Scheming|Mulling|Pouncing|Noodling|Schlepping|"
-    r"[✢✽]|\* [A-Z][a-z]"
-)
+# ❯ followed by numbered Yes choice — CC is waiting for permission approval
+_PERMISSION_MENU = re.compile(r"❯\s*1\.\s*Yes")
 
-_PERMISSION_PATTERNS = re.compile(
-    # CC permission dialog always ends with "Esc to cancel" — most reliable
+# Other permission prompt indicators (legacy and alternative UI)
+_PERMISSION_OTHER = re.compile(
     r"Esc to cancel"
-    # Broad "Do you want to ..." catches proceed/create/edit/write/delete/run
     r"|Do you want to \w+"
-    # CC Yes/No selection menu (❯ 1. Yes / 2. No)
-    r"|❯\s*1\.\s*Yes"
-    # Explicit permission header
     r"|Permission rule .+ requires confirmation"
-    # Legacy / alternative prompts
     r"|Allow this action"
     r"|\[y/N\]|\[Y/n\]|Allow once|Allow always"
     r"|Yes, I trust this folder|Enter to confirm"
 )
 
-_IDLE_PATTERN = re.compile(r"^\s*❯\s*$", re.MULTILINE)
+# Active spinner: a capitalized word ending in "…" (e.g. "Thinking…", "Zigzagging…")
+# Also matches tool-execution indicators (✢, ✽, * Verb)
+_ACTIVE_SPINNER = re.compile(
+    r"[A-Z][a-z]+(?:ing)?…"       # "Thinking…", "Zigzagging…", etc.
+    r"|[✢✽]"                       # tool-use glyphs
+    r"|\*\s[A-Z][a-z]"             # "* Envisioning…" etc.
+)
+
+# Bare ❯ prompt on its own line — CC is idle, waiting for user input
+_IDLE_PROMPT = re.compile(r"^\s*❯\s*$", re.MULTILINE)
 
 _EXPIRED_PATTERNS = re.compile(
     r"Timed out waiting for job step|End crun session|"
@@ -52,23 +68,35 @@ _COST_PATTERN = re.compile(r"\$[\d.]+")
 
 
 def detect_state(pane_output: str) -> PaneState:
-    """Analyze tmux pane output to determine CC state."""
+    """Analyze tmux pane output to determine CC state.
+
+    Uses a clean three-state model:
+      PERMISSION — ❯ is followed by "1. Yes" (numbered choice menu)
+      ACTIVE     — spinner verb with "…" (e.g. "Thinking…")
+      IDLE       — bare ❯ prompt, nothing after it
+
+    Plus EXPIRED for session death and UNKNOWN as fallback.
+    """
     if not pane_output.strip():
         return PaneState.UNKNOWN
 
-    # Check last ~50 lines for most detections (30 may miss prompts after long output)
+    # Check last ~50 lines (enough to see permission prompts after long output)
     tail = "\n".join(pane_output.splitlines()[-50:])
 
+    # 1. Session expired — highest priority
     if _EXPIRED_PATTERNS.search(tail):
         return PaneState.EXPIRED
 
-    if _PERMISSION_PATTERNS.search(tail):
+    # 2. Permission — ❯ with numbered Yes/No menu, or other permission prompts
+    if _PERMISSION_MENU.search(tail) or _PERMISSION_OTHER.search(tail):
         return PaneState.PERMISSION
 
-    if _ACTIVE_PATTERNS.search(tail):
+    # 3. Active — spinner verb (Xxxing…) or tool-use glyphs
+    if _ACTIVE_SPINNER.search(tail):
         return PaneState.ACTIVE
 
-    if _IDLE_PATTERN.search(tail):
+    # 4. Idle — bare ❯ prompt
+    if _IDLE_PROMPT.search(tail):
         return PaneState.IDLE
 
     return PaneState.UNKNOWN
@@ -113,11 +141,6 @@ _DANGEROUS_OVERRIDES = re.compile(
     re.IGNORECASE,
 )
 
-_SAFE_PATTERNS = re.compile(
-    r"Yes, I trust this folder|Enter to confirm|"
-    r"Allow once|Allow always|Allow this action|"
-    r"Do you want to \w+",
-)
 
 
 def classify_permission(pane_output: str) -> tuple[PaneState, str, bool]:
@@ -138,7 +161,11 @@ def classify_permission(pane_output: str) -> tuple[PaneState, str, bool]:
     prompt_lines = []
     for line in tail_lines:
         stripped = line.strip()
-        if stripped and (_PERMISSION_PATTERNS.search(stripped) or _DANGEROUS_KEYWORDS.search(stripped)):
+        if stripped and (
+            _PERMISSION_MENU.search(stripped)
+            or _PERMISSION_OTHER.search(stripped)
+            or _DANGEROUS_KEYWORDS.search(stripped)
+        ):
             prompt_lines.append(stripped)
     # If no specific lines matched, take all non-empty tail lines for context
     if not prompt_lines:
