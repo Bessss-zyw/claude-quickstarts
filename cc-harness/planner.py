@@ -192,10 +192,12 @@ What should happen next?"""
         path_info = ""
         if output_path:
             path_info = f"""
-Working directory: {agent.project_dir}
-Output directory: {output_path}
-All deliverable files go in the output directory. Use paths relative to the
-working directory (e.g. "output/hello.py", not just "hello.py")."""
+The agent's project directory (where CC runs): {agent.project_dir}
+Output directory (ABSOLUTE path): {output_path}
+IMPORTANT: All deliverable files MUST be saved using the ABSOLUTE output path above.
+For example, to save "result.md", write it to "{output_path}/result.md".
+Do NOT use relative paths like "output/result.md" — the output directory is NOT
+inside the agent's project directory."""
 
         prior_section = ""
         if prior_findings:

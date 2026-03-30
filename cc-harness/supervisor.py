@@ -166,6 +166,9 @@ def run(config: HarnessConfig) -> None:
     _DISPATCH_GRACE = 15
     # Consecutive IDLE poll counts per agent (reset on non-IDLE states)
     idle_counts: dict[str, int] = {}
+    # Consecutive UNKNOWN poll counts per agent (detect stuck state)
+    unknown_counts: dict[str, int] = {}
+    _UNKNOWN_STUCK_THRESHOLD = 15  # ~5 min at 20s poll — force re-check / approve
     # Collect results per agent for replan
     results: dict[str, str] = {}
 
@@ -303,9 +306,11 @@ def run(config: HarnessConfig) -> None:
                     output = cc.capture()
                     state = detect_state(output)
 
-                    # Reset idle counter on any non-IDLE state
+                    # Reset counters on state transitions
                     if state != PaneState.IDLE:
                         idle_counts.pop(agent_name, None)
+                    if state != PaneState.UNKNOWN:
+                        unknown_counts.pop(agent_name, None)
 
                     if state == PaneState.PERMISSION:
                         _, prompt_text, is_dangerous = classify_permission(output)
@@ -381,6 +386,31 @@ def run(config: HarnessConfig) -> None:
                     elif state == PaneState.ERROR:
                         log.warning("[%s] error detected in pane", agent_name)
                         # Don't immediately fail — CC might recover
+
+                    elif state == PaneState.UNKNOWN:
+                        unknown_counts[agent_name] = unknown_counts.get(agent_name, 0) + 1
+                        if unknown_counts[agent_name] == 1:
+                            log.info("[%s] UNKNOWN state (will retry)", agent_name)
+                        if unknown_counts[agent_name] >= _UNKNOWN_STUCK_THRESHOLD:
+                            # Stuck for too long — likely an unrecognized permission prompt.
+                            # Try sending Enter as a heuristic approval (like Isaac's approach).
+                            log.warning(
+                                "[%s] UNKNOWN state for %d consecutive polls (~%ds). "
+                                "Attempting Enter key as possible stuck permission.",
+                                agent_name, unknown_counts[agent_name],
+                                unknown_counts[agent_name] * config.poll_interval,
+                            )
+                            # Log the pane content for debugging
+                            tail_lines = "\n".join(output.splitlines()[-15:])
+                            log.warning("[%s] pane tail:\n%s", agent_name, tail_lines)
+                            cc.approve_permission()
+                            unknown_counts[agent_name] = 0
+                            append_history(config, {
+                                "event": "unknown_stuck_recovery",
+                                "agent": agent_name,
+                                "step_id": step_id,
+                                "pane_tail": tail_lines[:500],
+                            })
 
                     # Context compaction check
                     ctx_pct = get_context_pct(output)

@@ -24,9 +24,16 @@ _ACTIVE_PATTERNS = re.compile(
 )
 
 _PERMISSION_PATTERNS = re.compile(
-    r"Do you want to proceed|Allow this action|"
-    r"\[y/N\]|\[Y/n\]|Allow once|Allow always|"
-    r"Yes, I trust this folder|Enter to confirm"
+    # CC permission dialog always ends with "Esc to cancel" — most reliable
+    r"Esc to cancel"
+    # Broad "Do you want to ..." catches proceed/create/edit/write/delete/run
+    r"|Do you want to \w+"
+    # Explicit permission header
+    r"|Permission rule .+ requires confirmation"
+    # Legacy / alternative prompts
+    r"|Allow this action"
+    r"|\[y/N\]|\[Y/n\]|Allow once|Allow always"
+    r"|Yes, I trust this folder|Enter to confirm"
 )
 
 _IDLE_PATTERN = re.compile(r"^\s*❯\s*$", re.MULTILINE)
@@ -95,7 +102,7 @@ _DANGEROUS_KEYWORDS = re.compile(
 _SAFE_PATTERNS = re.compile(
     r"Yes, I trust this folder|Enter to confirm|"
     r"Allow once|Allow always|Allow this action|"
-    r"Do you want to proceed",
+    r"Do you want to \w+",
 )
 
 
