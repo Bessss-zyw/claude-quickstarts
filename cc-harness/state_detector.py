@@ -54,8 +54,8 @@ def detect_state(pane_output: str) -> PaneState:
     if not pane_output.strip():
         return PaneState.UNKNOWN
 
-    # Check last ~30 lines for most detections
-    tail = "\n".join(pane_output.splitlines()[-30:])
+    # Check last ~50 lines for most detections (30 may miss prompts after long output)
+    tail = "\n".join(pane_output.splitlines()[-50:])
 
     if _EXPIRED_PATTERNS.search(tail):
         return PaneState.EXPIRED
@@ -93,11 +93,21 @@ def get_cost(pane_output: str) -> str | None:
 
 _DANGEROUS_KEYWORDS = re.compile(
     r"\brm\s+-r|\brm\s+/|\brmdir\b|\bdelete\b|\bremove\b|\bdrop\b"
-    r"|\bformat\b|\breset\s+--hard\b|\bforce\s+push\b|\b--force\b"
+    r"|\bformat\b|\breset\s+--hard\b|\bforce\s+push\b"
     r"|\bchmod\s+777\b|\bmkfs\b|\bdd\s+if="
     r"|\bgit\s+push\s+.*--force\b|\bgit\s+clean\s+-f"
     # sudo: only flag interactive/privileged sudo, not safe checks like "sudo -n true"
     r"|\bsudo\s+(?!-n\b)",
+    re.IGNORECASE,
+)
+
+# Patterns that look dangerous but are actually safe in our workflow.
+# If ALL dangerous matches are covered by these overrides, classify as safe.
+_DANGEROUS_OVERRIDES = re.compile(
+    # dangerouslyDisableSandbox is routine for SSH-based GPU work
+    r"dangerouslyDisableSandbox"
+    # --force in pip install --force-reinstall is safe
+    r"|pip\s+install\s+.*--force",
     re.IGNORECASE,
 )
 
@@ -134,6 +144,11 @@ def classify_permission(pane_output: str) -> tuple[PaneState, str, bool]:
 
     prompt_text = "\n".join(prompt_lines)
     is_dangerous = bool(_DANGEROUS_KEYWORDS.search(prompt_text))
+    # Check if all "dangerous" matches are actually safe overrides
+    if is_dangerous and _DANGEROUS_OVERRIDES.search(prompt_text):
+        # Re-check: strip the overridden parts and see if anything dangerous remains
+        cleaned = _DANGEROUS_OVERRIDES.sub("", prompt_text)
+        is_dangerous = bool(_DANGEROUS_KEYWORDS.search(cleaned))
     return state, prompt_text, is_dangerous
 
 
