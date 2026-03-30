@@ -407,23 +407,40 @@ def run(config: HarnessConfig) -> None:
                             log.info("[%s] UNKNOWN state (will retry)", agent_name)
                         if unknown_counts[agent_name] >= _UNKNOWN_STUCK_THRESHOLD:
                             # Stuck for too long — likely an unrecognized permission prompt.
-                            # Try sending Enter as a heuristic approval (like Isaac's approach).
+                            # Ask coordinator to review the pane content and decide.
+                            tail_lines = "\n".join(output.splitlines()[-25:])
                             log.warning(
                                 "[%s] UNKNOWN state for %d consecutive polls (~%ds). "
-                                "Attempting Enter key as possible stuck permission.",
+                                "Escalating to coordinator for review.",
                                 agent_name, unknown_counts[agent_name],
                                 unknown_counts[agent_name] * config.poll_interval,
                             )
-                            # Log the pane content for debugging
-                            tail_lines = "\n".join(output.splitlines()[-15:])
                             log.warning("[%s] pane tail:\n%s", agent_name, tail_lines)
-                            cc.approve_permission()
+                            # Find current step description for context
+                            step_desc = ""
+                            for s in plan["steps"]:
+                                if s["id"] == step_id:
+                                    step_desc = s["description"]
+                                    break
+                            approved = planner.review_permission(
+                                agent_name, step_desc,
+                                f"[UNKNOWN state — possible unrecognized permission prompt]\n{tail_lines}",
+                            )
+                            if approved:
+                                cc.approve_permission()
+                                log.info("[%s] coordinator approved UNKNOWN stuck recovery",
+                                         agent_name)
+                            else:
+                                cc.reject_permission()
+                                log.warning("[%s] coordinator REJECTED UNKNOWN stuck recovery",
+                                            agent_name)
                             unknown_counts[agent_name] = 0
                             append_history(config, {
                                 "event": "unknown_stuck_recovery",
                                 "agent": agent_name,
                                 "step_id": step_id,
                                 "pane_tail": tail_lines[:500],
+                                "coordinator_approved": approved,
                             })
 
                     # Context compaction check
