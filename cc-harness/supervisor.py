@@ -80,7 +80,7 @@ def gather_prior_findings(plan: dict, step: dict) -> str:
     parts = []
     for s in plan["steps"]:
         if s["id"] in deps and s.get("findings"):
-            parts.append(f"[Step {s['id']} — {s['assigned_to']}]: {s['findings'][:400]}")
+            parts.append(f"[Step {s['id']} — {s['assigned_to']}]: {s['findings'][:1000]}")
     return "\n".join(parts)
 
 
@@ -286,11 +286,14 @@ def run(config: HarnessConfig) -> None:
 
             # ── Phase 3: Monitor loop ─────────────────────────────────
             if not active_agents:
-                if all_done(plan):
-                    log.info("All steps done.")
-                    break
+                # No work dispatched — go back to coordinator for evaluation.
+                # The coordinator decides whether to add steps, retry, or declare complete.
                 if not get_pending_steps(plan):
-                    log.warning("No active or pending steps. Forcing replan next iteration.")
+                    log.info("No active or pending steps. Returning to coordinator for evaluation.")
+                    continue
+                else:
+                    # There are pending steps but they have unmet deps; wait for replan
+                    log.info("Pending steps have unmet dependencies. Returning to coordinator.")
                     continue
 
             monitor_rounds = 0
@@ -366,7 +369,7 @@ def run(config: HarnessConfig) -> None:
                         for step in plan["steps"]:
                             if step["id"] == step_id:
                                 step["status"] = "done"
-                                step["findings"] = result_text[:500]
+                                step["findings"] = result_text[:2000]
                                 break
                         save_plan(config, plan)
                         results[agent_name] = result_text
@@ -446,12 +449,28 @@ def run(config: HarnessConfig) -> None:
                         log.info("Dispatched step %d to %s (during monitor)", step["id"], agent_name)
 
             # ── Phase 4: Check stop conditions ────────────────────────
-            if all_done(plan):
-                log.info("All plan steps completed.")
-                break
-
+            # Only two valid exit conditions:
+            # 1. Coordinator declares is_complete=true (handled in Phase 1 replan)
+            # 2. Max iterations reached (with coordinator summary)
             if iteration >= config.max_iterations:
-                log.warning("Max iterations (%d) reached.", config.max_iterations)
+                log.warning("Max iterations (%d) reached. Returning to coordinator for final summary.", config.max_iterations)
+                # Do one final evaluation so coordinator can summarize
+                specialists_dict = {a.name: a for a in specialists}
+                decisions = planner.evaluate_and_replan(plan["steps"], specialists_dict)
+                append_history(config, {
+                    "event": "max_iterations_summary",
+                    "reasoning": decisions.get("reasoning", ""),
+                    "is_complete": decisions.get("is_complete", False),
+                })
+                # Apply any final plan updates
+                for upd in decisions.get("plan_updates", []):
+                    for step in plan["steps"]:
+                        if step["id"] == upd.get("step_id"):
+                            if "status" in upd:
+                                step["status"] = upd["status"]
+                            if "findings" in upd:
+                                step["findings"] = upd["findings"]
+                save_plan(config, plan)
                 break
 
             # Clear results for next iteration's replan
