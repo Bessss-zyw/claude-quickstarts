@@ -74,7 +74,7 @@ class HarnessConfig:
     max_iterations: int = 20
     compact_threshold: int = 60
     send_cooldown: int = 30
-    poll_interval: int = 15
+    poll_interval: int = 3
     idle_confirm: int = 2
 
     # Coordinator model config
@@ -103,11 +103,19 @@ class HarnessConfig:
         return os.path.join(self.harness_path, "token_usage.json")
 
     @property
+    def reports_dir(self) -> str:
+        return os.path.join(self.harness_path, "reports")
+
+    @property
     def output_path(self) -> str:
         return os.path.join(self.working_dir, "output")
 
+    def report_path(self, step_id: int) -> str:
+        """Path for a specialist's step report file."""
+        return os.path.join(self.reports_dir, f"step_{step_id}.md")
+
     def ensure_dirs(self) -> None:
-        for d in (self.harness_path, self.agents_log_dir, self.output_path):
+        for d in (self.harness_path, self.agents_log_dir, self.reports_dir, self.output_path):
             os.makedirs(d, exist_ok=True)
 
     def get_specialists(self) -> list[AgentDef]:
@@ -180,7 +188,7 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
         max_iterations=overrides.get("max_iterations", harness_cfg.get("max_iterations", 20)),
         compact_threshold=harness_cfg.get("compact_threshold", 60),
         send_cooldown=harness_cfg.get("send_cooldown", 30),
-        poll_interval=harness_cfg.get("poll_interval", 15),
+        poll_interval=harness_cfg.get("poll_interval", 3),
         idle_confirm=harness_cfg.get("idle_confirm", 2),
         coordinator_model=coord_cfg.get("model", "aws/anthropic/bedrock-claude-opus-4-6"),
         coordinator_base_url=base_url,

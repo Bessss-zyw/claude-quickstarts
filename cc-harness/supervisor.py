@@ -276,6 +276,7 @@ def run(config: HarnessConfig) -> None:
                 instruction = planner.generate_instruction(
                     config.agents[agent_name], step["description"], recent_output,
                     output_path=config.output_path, prior_findings=prior,
+                    report_path=config.report_path(step["id"]),
                 )
                 instances[agent_name].send(instruction)
                 step["status"] = "in_progress"
@@ -365,7 +366,17 @@ def run(config: HarnessConfig) -> None:
                         result_text = extract_last_response(output)
                         cc.save_log(output)
 
-                        # Update plan step
+                        # Check for step report file (preferred over pane extraction)
+                        report_file = config.report_path(step_id)
+                        if os.path.isfile(report_file):
+                            log.info("[%s] step report found: %s", agent_name, report_file)
+                        else:
+                            log.warning("[%s] NO step report written at %s — "
+                                        "coordinator will rely on pane-extracted findings",
+                                        agent_name, report_file)
+
+                        # Update plan step (pane-extracted as fallback; report file
+                        # is read directly by coordinator in evaluate_and_replan)
                         for step in plan["steps"]:
                             if step["id"] == step_id:
                                 step["status"] = "done"
@@ -440,6 +451,7 @@ def run(config: HarnessConfig) -> None:
                         instruction = planner.generate_instruction(
                             config.agents[agent_name], step["description"], recent_output,
                             output_path=config.output_path, prior_findings=prior,
+                            report_path=config.report_path(step["id"]),
                         )
                         instances[agent_name].send(instruction)
                         step["status"] = "in_progress"

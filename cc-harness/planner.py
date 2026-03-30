@@ -124,11 +124,28 @@ Create the execution plan as JSON."""
         self, plan_steps: list[dict], agents: dict[str, "AgentDef"]
     ) -> dict:
         """Evaluate completed steps and decide next actions."""
-        plan_text = "\n".join(
-            f"  Step {s['id']} [{s['status']}] ({s['assigned_to']}): {s['description']}"
-            + (f"\n    Findings: {s['findings'][:1500]}" if s.get('findings') else "")
-            for s in plan_steps
-        )
+        import os
+
+        # Build plan text with step reports as primary info source
+        plan_parts = []
+        for s in plan_steps:
+            part = f"  Step {s['id']} [{s['status']}] ({s['assigned_to']}): {s['description']}"
+            # Prefer step report file over pane-extracted findings
+            report_path = self.config.report_path(s['id'])
+            if os.path.isfile(report_path):
+                try:
+                    with open(report_path, encoding="utf-8") as f:
+                        report_content = f.read()
+                    # Use report content (truncate to keep prompt manageable)
+                    part += f"\n    [Step Report ({len(report_content)} chars)]:\n{report_content[:3000]}"
+                except Exception as e:
+                    logger.warning("Failed to read report for step %d: %s", s['id'], e)
+                    if s.get('findings'):
+                        part += f"\n    Findings (pane-extracted): {s['findings'][:1500]}"
+            elif s.get('findings'):
+                part += f"\n    Findings (pane-extracted, NO step report written): {s['findings'][:1500]}"
+            plan_parts.append(part)
+        plan_text = "\n".join(plan_parts)
         agent_names = list(agents.keys())
 
         system = """You are a project coordinator AI. Review the current plan execution state
@@ -202,6 +219,7 @@ What should happen next?"""
         *,
         output_path: str = "",
         prior_findings: str = "",
+        report_path: str = "",
     ) -> str:
         """Generate a specific instruction for a specialist CC instance."""
         path_info = ""
@@ -214,6 +232,21 @@ For example, to save "result.md", write it to "{output_path}/result.md".
 Do NOT use relative paths like "output/result.md" — the output directory is NOT
 inside the agent's project directory."""
 
+        report_info = ""
+        if report_path:
+            report_info = f"""
+
+MANDATORY STEP REPORT: When the task is complete, the agent MUST write a step report to:
+  {report_path}
+The report must be honest and comprehensive. Include:
+- What was done (actions taken, files read/modified, commands run)
+- Key results (test pass/fail counts, performance numbers, error messages)
+- Files created or modified (with absolute paths)
+- Any issues encountered and how they were resolved
+- Conclusion (success/failure, what the next step should do)
+This report is how the coordinator understands your work. If you don't write it,
+the coordinator cannot evaluate progress or make correct decisions."""
+
         prior_section = ""
         if prior_findings:
             prior_section = f"""
@@ -223,12 +256,13 @@ Results from prior steps (use these to inform your instruction):
 
         system = f"""You are supervising a Claude Code agent named "{agent.name}".
 Role: {agent.role}
-{path_info}
+{path_info}{report_info}
 Generate ONE clear, actionable instruction for this agent. Be specific about:
 - What to do
 - What files to read/create/modify (use correct paths!)
 - What commands to run
 - What output to produce
+- MUST include the step report requirement (write report to the specified path when done)
 
 Output ONLY the instruction text. No preamble, no explanation."""
 
