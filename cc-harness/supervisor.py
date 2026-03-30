@@ -349,6 +349,12 @@ def run(config: HarnessConfig) -> None:
                                 "is_dangerous": True,
                                 "approved": approved,
                             })
+                        # CRITICAL: After approving/rejecting, reset the grace timer.
+                        # CC needs time to process the approval and start executing.
+                        # Without this, the brief IDLE state between approval and
+                        # execution gets misdetected as "task completed", causing
+                        # dependent tasks to start prematurely.
+                        dispatch_times[agent_name] = time.time()
 
                     elif state == PaneState.IDLE:
                         # Grace period: ignore IDLE right after dispatch
@@ -435,6 +441,8 @@ def run(config: HarnessConfig) -> None:
                                 log.warning("[%s] coordinator REJECTED UNKNOWN stuck recovery",
                                             agent_name)
                             unknown_counts[agent_name] = 0
+                            # Reset grace timer — same reason as PERMISSION branch
+                            dispatch_times[agent_name] = time.time()
                             append_history(config, {
                                 "event": "unknown_stuck_recovery",
                                 "agent": agent_name,
