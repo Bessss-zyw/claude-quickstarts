@@ -72,15 +72,42 @@ def all_done(plan: dict) -> bool:
     return all(s["status"] == "done" for s in plan["steps"])
 
 
-def gather_prior_findings(plan: dict, step: dict) -> str:
-    """Collect findings from a step's dependencies for context injection."""
+def gather_prior_findings(plan: dict, step: dict, config: "HarnessConfig | None" = None) -> str:
+    """Collect findings from a step's dependencies for context injection.
+
+    Prefers step report files (written by the specialist) over pane-extracted
+    findings in plan JSON, since reports are the authoritative completion signal
+    and contain full results.
+    """
     deps = step.get("depends_on", [])
     if not deps:
         return ""
     parts = []
     for s in plan["steps"]:
-        if s["id"] in deps and s.get("findings"):
-            parts.append(f"[Step {s['id']} — {s['assigned_to']}]: {s['findings'][:1000]}")
+        if s["id"] not in deps:
+            continue
+        if s.get("status") != "done":
+            continue
+
+        # Prefer report file (full results) over plan findings (truncated pane extract)
+        report_content = None
+        if config:
+            report_path = config.report_path(s["id"])
+            if os.path.isfile(report_path):
+                try:
+                    with open(report_path, encoding="utf-8") as f:
+                        report_content = f.read().strip()
+                except Exception:
+                    pass
+
+        if report_content:
+            # Truncate very long reports but keep much more than the old 1000 chars
+            if len(report_content) > 4000:
+                report_content = report_content[:2000] + "\n...[truncated]...\n" + report_content[-2000:]
+            parts.append(f"[Step {s['id']} — {s['assigned_to']} — from report]:\n{report_content}")
+        elif s.get("findings"):
+            parts.append(f"[Step {s['id']} — {s['assigned_to']} — pane-extracted]: {s['findings'][:1500]}")
+
     return "\n".join(parts)
 
 
@@ -273,7 +300,7 @@ def run(config: HarnessConfig) -> None:
                         continue  # dependencies not met yet
 
                 recent_output = instances[agent_name].capture(lines=50)
-                prior = gather_prior_findings(plan, step)
+                prior = gather_prior_findings(plan, step, config)
                 instruction = planner.generate_instruction(
                     config.agents[agent_name], step["description"], recent_output,
                     output_path=config.output_path, prior_findings=prior,
@@ -506,7 +533,7 @@ def run(config: HarnessConfig) -> None:
                         ):
                             continue
                         recent_output = instances[agent_name].capture(lines=50)
-                        prior = gather_prior_findings(plan, step)
+                        prior = gather_prior_findings(plan, step, config)
                         instruction = planner.generate_instruction(
                             config.agents[agent_name], step["description"], recent_output,
                             output_path=config.output_path, prior_findings=prior,
