@@ -32,13 +32,32 @@ class CCInstance:
         """Launch Claude Code in a new tmux window and wait for it to be ready."""
         project_dir = self.agent.project_dir
 
-        # Build claude command
-        cc_cmd = "claude"
+        # Build claude command.
+        # If a system prompt is set, write a launcher script to avoid quoting
+        # issues with --system-prompt in tmux send-keys / shell expansion.
+        cc_parts = ["claude"]
         if self.agent.allowlist:
-            cc_cmd += f" --allowedTools '{self.agent.allowlist}'"
+            cc_parts.append(f"--allowedTools '{self.agent.allowlist}'")
 
-        # Create tmux window and launch CC
-        cmd = f"cd {shlex.quote(project_dir)} && {cc_cmd}"
+        if self.agent.system_prompt:
+            import pathlib
+            import tempfile
+            sp_file = pathlib.Path(tempfile.gettempdir()) / f".cc_sp_{self.agent.name}.txt"
+            launcher = pathlib.Path(tempfile.gettempdir()) / f".cc_launch_{self.agent.name}.sh"
+            sp_file.write_text(self.agent.system_prompt)
+            # Launcher script reads the prompt file — no quoting issues
+            launcher.write_text(
+                f'#!/bin/bash\n'
+                f'cd {shlex.quote(project_dir)}\n'
+                f'exec {" ".join(cc_parts)} --system-prompt "$(cat {sp_file})"\n'
+            )
+            launcher.chmod(0o755)
+            cmd = f"bash {launcher}"
+            logger.info("System prompt for '%s' (%d chars) via %s",
+                        self.agent.name, len(self.agent.system_prompt), launcher)
+        else:
+            # No system prompt — simple inline command
+            cmd = f"cd {shlex.quote(project_dir)} && {' '.join(cc_parts)}"
         self._tmux(["new-window", "-t", self.tmux_session, "-n", self.window_name, cmd])
         logger.info("Started CC instance '%s' in %s", self.agent.name, project_dir)
 

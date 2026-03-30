@@ -52,12 +52,39 @@ def _resolve_api_key() -> str:
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
+def _build_specialist_prompt(name: str, role: str, task_goal: str, task_context: str) -> str:
+    """Build a system prompt for a specialist CC instance.
+
+    Gives the specialist awareness of: who it is, its role boundaries,
+    the overall task goal, and relevant context.
+    """
+    parts = [
+        f"You are \"{name}\", a specialist agent in a multi-agent team.",
+        f"Your role: {role.strip()}" if role else "",
+        "",
+        "## Task Goal",
+        task_goal.strip() if task_goal else "(not provided)",
+    ]
+    if task_context:
+        parts += ["", "## Context", task_context.strip()]
+    parts += [
+        "",
+        "## Operating Rules",
+        "- You will receive specific instructions from a coordinator. Follow them precisely.",
+        "- Focus on your role — do not do work outside your specialty.",
+        "- When your assigned task is done, stop and wait. Do not start new work unprompted.",
+        "- Report results clearly: numbers, pass/fail, file paths, error messages.",
+    ]
+    return "\n".join(parts)
+
+
 @dataclass
 class AgentDef:
     name: str
     role: str
     project_dir: str          # CC --project-dir (determines MCP/skills)
     allowlist: str | None = None  # CC --allowedTools pattern
+    system_prompt: str | None = None  # CC --system-prompt (injected at startup)
     is_coordinator: bool = False
 
 
@@ -158,13 +185,25 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
     working_dir = os.path.abspath(working_dir)
 
     # Parse agents
+    task_goal = data.get("goal", "")
+    task_context = data.get("context", "")
     agents: dict[str, AgentDef] = {}
     for name, spec in data.get("agents", {}).items():
+        # Build system prompt: explicit > auto-generated from role + task info
+        explicit_sp = spec.get("system_prompt")
+        if explicit_sp:
+            sp = explicit_sp
+        elif name != "coordinator":
+            # Auto-generate system prompt for specialists
+            sp = _build_specialist_prompt(name, spec.get("role", ""), task_goal, task_context)
+        else:
+            sp = None
         agents[name] = AgentDef(
             name=name,
             role=spec.get("role", ""),
             project_dir=spec.get("project_dir", working_dir),
             allowlist=spec.get("allowlist"),
+            system_prompt=sp,
             is_coordinator=(name == "coordinator"),
         )
 

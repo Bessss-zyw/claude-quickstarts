@@ -51,6 +51,9 @@ agents:
       Save intermediate files to workspace/coder/ and deliverables to output/.
     project_dir: /path/to/your/project      # CC works here, inherits MCP/skills
     allowlist: "Bash,Read,Write,Edit,Glob,Grep"
+    # system_prompt: |                       # optional: override auto-generated prompt
+    #   Custom instructions injected into CC via --system-prompt.
+    #   If omitted, auto-generated from role + task goal + context.
 
   tester:
     role: >
