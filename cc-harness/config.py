@@ -103,6 +103,7 @@ class HarnessConfig:
     send_cooldown: int = 30
     poll_interval: int = 3
     idle_confirm: int = 2
+    skip_permissions: bool = False  # launch CC with --dangerouslySkipPermissions
 
     # Coordinator model config
     coordinator_model: str = "aws/anthropic/bedrock-claude-opus-4-6"
@@ -229,6 +230,7 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
         send_cooldown=harness_cfg.get("send_cooldown", 30),
         poll_interval=harness_cfg.get("poll_interval", 3),
         idle_confirm=harness_cfg.get("idle_confirm", 2),
+        skip_permissions=harness_cfg.get("skip_permissions", False),
         coordinator_model=coord_cfg.get("model", "aws/anthropic/bedrock-claude-opus-4-6"),
         coordinator_base_url=base_url,
         coordinator_api_key=api_key,

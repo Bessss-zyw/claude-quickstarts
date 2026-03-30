@@ -28,6 +28,8 @@ _PERMISSION_PATTERNS = re.compile(
     r"Esc to cancel"
     # Broad "Do you want to ..." catches proceed/create/edit/write/delete/run
     r"|Do you want to \w+"
+    # CC Yes/No selection menu (❯ 1. Yes / 2. No)
+    r"|❯\s*1\.\s*Yes"
     # Explicit permission header
     r"|Permission rule .+ requires confirmation"
     # Legacy / alternative prompts

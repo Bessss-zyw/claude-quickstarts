@@ -36,6 +36,8 @@ class CCInstance:
         # If a system prompt is set, write a launcher script to avoid quoting
         # issues with --system-prompt in tmux send-keys / shell expansion.
         cc_parts = ["claude"]
+        if self.config.skip_permissions:
+            cc_parts.append("--dangerouslySkipPermissions")
         if self.agent.allowlist:
             cc_parts.append(f"--allowedTools '{self.agent.allowlist}'")
 

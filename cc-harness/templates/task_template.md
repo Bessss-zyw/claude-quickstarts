@@ -27,8 +27,10 @@ environment:
 harness:
   tmux_session: harness                     # tmux session name
   compact_threshold: 60                     # send /compact when context >= N%
-  poll_interval: 15                         # seconds between state polls
+  poll_interval: 3                          # seconds between state polls
   send_cooldown: 30                         # min seconds between sends to same agent
+  skip_permissions: false                   # true = launch CC with --dangerouslySkipPermissions
+                                            # (skips all permission prompts — faster but no safety checks)
 
 # ── Agent team ──────────────────────────────────────────────────────────
 #
