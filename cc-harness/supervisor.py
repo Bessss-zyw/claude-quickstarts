@@ -168,7 +168,7 @@ def run(config: HarnessConfig) -> None:
     idle_counts: dict[str, int] = {}
     # Consecutive UNKNOWN poll counts per agent (detect stuck state)
     unknown_counts: dict[str, int] = {}
-    _UNKNOWN_STUCK_THRESHOLD = 10  # ~30s at 3s poll — force re-check / approve
+    _UNKNOWN_STUCK_THRESHOLD = 3  # ~9s at 3s poll — escalate to coordinator
     # Collect results per agent for replan
     results: dict[str, str] = {}
 
