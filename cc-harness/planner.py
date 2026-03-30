@@ -49,7 +49,7 @@ class Planner:
                     {"role": "user", "content": user},
                 ],
                 temperature=temperature,
-                max_tokens=2000,
+                max_tokens=4096,
             )
             usage = getattr(resp, "usage", None)
             if usage:
@@ -108,8 +108,8 @@ Create the execution plan as JSON."""
             start = raw.index("[")
             end = raw.rindex("]") + 1
             steps = json.loads(raw[start:end])
-        except (ValueError, json.JSONDecodeError):
-            logger.error("Failed to parse plan from Opus response: %s", raw[:500])
+        except (ValueError, json.JSONDecodeError) as e:
+            logger.error("Failed to parse plan: %s | Response (last 200): ...%s", e, raw[-200:])
             steps = [{"description": "Execute the task as described in the goal.",
                        "assigned_to": list(agents.keys())[0], "depends_on": []}]
 
