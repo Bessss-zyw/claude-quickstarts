@@ -126,7 +126,7 @@ Create the execution plan as JSON."""
         """Evaluate completed steps and decide next actions."""
         plan_text = "\n".join(
             f"  Step {s['id']} [{s['status']}] ({s['assigned_to']}): {s['description']}"
-            + (f"\n    Findings: {s['findings'][:300]}" if s.get('findings') else "")
+            + (f"\n    Findings: {s['findings'][:1500]}" if s.get('findings') else "")
             for s in plan_steps
         )
         agent_names = list(agents.keys())
@@ -154,11 +154,26 @@ Rules:
 - When generating instructions for downstream steps, incorporate relevant
   findings from upstream steps (e.g. file paths, output values)"""
 
+        # Check deliverable existence on disk so coordinator has ground truth
+        import os
+        deliverable_status = []
+        for d in self.config.deliverables:
+            path = os.path.join(self.config.output_path, d["path"])
+            exists = os.path.isfile(path)
+            size = os.path.getsize(path) if exists else 0
+            deliverable_status.append(
+                f"  - {d['path']}: {'EXISTS (' + str(size) + ' bytes)' if exists else 'MISSING'}"
+            )
+        deliverable_text = "\n".join(deliverable_status) if deliverable_status else "  (none defined)"
+
         user = f"""Task: {self.config.task_name}
 Goal: {self.config.task_goal}
 
 Current Plan State:
 {plan_text}
+
+Deliverable Files (ground truth from filesystem):
+{deliverable_text}
 
 Available agents: {agent_names}
 
