@@ -237,10 +237,19 @@ def run(config: HarnessConfig) -> None:
                     "is_complete": decisions.get("is_complete", False),
                 })
 
-                # Apply plan updates
+                # Apply plan updates — but NEVER overwrite in_progress steps.
+                # A specialist may still be running; only the monitor loop should
+                # transition in_progress → done/failed based on actual pane state.
                 for upd in decisions.get("plan_updates", []):
                     for step in plan["steps"]:
                         if step["id"] == upd.get("step_id"):
+                            if step["status"] == "in_progress":
+                                log.warning(
+                                    "Coordinator tried to update in_progress step %d "
+                                    "to '%s' — ignoring (specialist still running).",
+                                    step["id"], upd.get("status", "?"),
+                                )
+                                break
                             if "status" in upd:
                                 step["status"] = upd["status"]
                             if "findings" in upd:
