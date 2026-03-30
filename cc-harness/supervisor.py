@@ -169,6 +169,7 @@ def run(config: HarnessConfig) -> None:
     # Consecutive UNKNOWN poll counts per agent (detect stuck state)
     unknown_counts: dict[str, int] = {}
     _UNKNOWN_STUCK_THRESHOLD = 3  # ~9s at 3s poll — escalate to coordinator
+    _MAX_IDLE_NUDGES = 3  # max times to nudge idle specialist before fallback
     # Collect results per agent for replan
     results: dict[str, str] = {}
 
@@ -357,41 +358,74 @@ def run(config: HarnessConfig) -> None:
                         dispatch_times[agent_name] = time.time()
 
                     elif state == PaneState.IDLE:
-                        # Grace period: ignore IDLE right after dispatch
+                        # Grace period: ignore IDLE right after dispatch / approval
                         if time.time() - dispatch_times.get(agent_name, 0) < _DISPATCH_GRACE:
                             continue
-                        # Require consecutive IDLE polls to confirm completion
+                        # Require consecutive IDLE polls before taking action
                         idle_counts[agent_name] = idle_counts.get(agent_name, 0) + 1
                         if idle_counts[agent_name] < config.idle_confirm:
                             log.debug("[%s] idle detected (%d/%d), waiting for confirmation",
                                       agent_name, idle_counts[agent_name], config.idle_confirm)
                             continue
-                        # Confirmed idle — agent finished its task
-                        log.info("[%s] confirmed idle after %d consecutive polls, marking done",
-                                 agent_name, idle_counts[agent_name])
-                        result_text = extract_last_response(output)
-                        cc.save_log(output)
 
-                        # Check for step report file (preferred over pane extraction)
+                        # Confirmed idle — but IDLE alone does NOT mean "done".
+                        # The specialist must have written a step report to signal
+                        # completion. Without it, the specialist is paused/stuck and
+                        # needs a nudge.
                         report_file = config.report_path(step_id)
                         if os.path.isfile(report_file):
-                            log.info("[%s] step report found: %s", agent_name, report_file)
+                            # ── Genuine completion: report exists ──
+                            log.info("[%s] step report found at %s — marking done",
+                                     agent_name, report_file)
+                            result_text = extract_last_response(output)
+                            cc.save_log(output)
+                            for step in plan["steps"]:
+                                if step["id"] == step_id:
+                                    step["status"] = "done"
+                                    step["findings"] = result_text[:2000]
+                                    break
+                            save_plan(config, plan)
+                            results[agent_name] = result_text
+                            finished.append(agent_name)
+                            idle_counts.pop(agent_name, None)
                         else:
-                            log.warning("[%s] NO step report written at %s — "
-                                        "coordinator will rely on pane-extracted findings",
-                                        agent_name, report_file)
-
-                        # Update plan step (pane-extracted as fallback; report file
-                        # is read directly by coordinator in evaluate_and_replan)
-                        for step in plan["steps"]:
-                            if step["id"] == step_id:
-                                step["status"] = "done"
-                                step["findings"] = result_text[:2000]
-                                break
-                        save_plan(config, plan)
-                        results[agent_name] = result_text
-                        finished.append(agent_name)
-                        idle_counts.pop(agent_name, None)
+                            # ── No report: specialist stopped but didn't finish ──
+                            # Nudge it to continue or write the report.
+                            nudge_count = idle_counts[agent_name] - config.idle_confirm + 1
+                            if nudge_count <= _MAX_IDLE_NUDGES:
+                                log.warning(
+                                    "[%s] idle but NO step report (nudge %d/%d). "
+                                    "Reminding specialist to continue or report.",
+                                    agent_name, nudge_count, _MAX_IDLE_NUDGES,
+                                )
+                                cc.send(
+                                    "You appear to be idle but your task is not complete — "
+                                    f"the step report has not been written to {report_file}. "
+                                    "If you are done, write the report now. "
+                                    "If you are stuck, describe what is blocking you."
+                                )
+                                dispatch_times[agent_name] = time.time()
+                            else:
+                                # Exhausted nudges — ask coordinator to evaluate
+                                log.warning(
+                                    "[%s] idle without report after %d nudges. "
+                                    "Marking done with pane-extracted findings.",
+                                    agent_name, _MAX_IDLE_NUDGES,
+                                )
+                                result_text = extract_last_response(output)
+                                cc.save_log(output)
+                                for step in plan["steps"]:
+                                    if step["id"] == step_id:
+                                        step["status"] = "done"
+                                        step["findings"] = (
+                                            "[WARNING: specialist did not write step report] "
+                                            + result_text[:1800]
+                                        )
+                                        break
+                                save_plan(config, plan)
+                                results[agent_name] = result_text
+                                finished.append(agent_name)
+                                idle_counts.pop(agent_name, None)
 
                     elif state == PaneState.EXPIRED:
                         log.error("[%s] session expired!", agent_name)
