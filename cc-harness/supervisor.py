@@ -246,13 +246,14 @@ def run(config: HarnessConfig) -> None:
                             if "findings" in upd:
                                 step["findings"] = upd["findings"]
 
-                # Add new steps
+                # Add new steps (with dependency tracking)
                 for ns in decisions.get("new_steps", []):
                     new_id = max(s["id"] for s in plan["steps"]) + 1
                     plan["steps"].append({
                         "id": new_id,
                         "description": ns.get("description", ""),
                         "assigned_to": ns.get("assigned_to", ""),
+                        "depends_on": ns.get("depends_on", []),
                         "status": "pending",
                         "findings": "",
                     })

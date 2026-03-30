@@ -185,7 +185,10 @@ Rules:
 - Set is_complete=true ONLY when ALL deliverables exist on filesystem AND
   findings/reports confirm successful execution with no outstanding issues
 - Instructions must be specific and actionable
-- new_steps format: [{"description": "...", "assigned_to": "agent_name"}]"""
+- new_steps format: [{"description": "...", "assigned_to": "agent_name", "depends_on": [step_ids]}]
+  - depends_on is a list of step IDs (integers) that must complete before this step can start
+  - Use depends_on to enforce ordering (e.g. test step depends on code step)
+  - If the step has no dependencies, use an empty list: "depends_on": []"""
 
         # Check deliverable existence on disk so coordinator has ground truth
         import os
