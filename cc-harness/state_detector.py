@@ -94,8 +94,10 @@ def get_cost(pane_output: str) -> str | None:
 _DANGEROUS_KEYWORDS = re.compile(
     r"\brm\s+-r|\brm\s+/|\brmdir\b|\bdelete\b|\bremove\b|\bdrop\b"
     r"|\bformat\b|\breset\s+--hard\b|\bforce\s+push\b|\b--force\b"
-    r"|\bchmod\s+777\b|\bsudo\b|\bmkfs\b|\bdd\s+if="
-    r"|\bgit\s+push\s+.*--force\b|\bgit\s+clean\s+-f",
+    r"|\bchmod\s+777\b|\bmkfs\b|\bdd\s+if="
+    r"|\bgit\s+push\s+.*--force\b|\bgit\s+clean\s+-f"
+    # sudo: only flag interactive/privileged sudo, not safe checks like "sudo -n true"
+    r"|\bsudo\s+(?!-n\b)",
     re.IGNORECASE,
 )
 
