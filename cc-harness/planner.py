@@ -73,7 +73,10 @@ class Planner:
         )
 
         system = """You are a project coordinator AI. Given a task and a team of specialist agents,
-create an ordered execution plan. Each step should be assigned to exactly one specialist.
+plan ONLY the immediate next phase of work (2-4 concrete steps).
+
+DO NOT plan the entire task upfront. You will be called again after these steps
+complete, and you can plan the next phase based on actual results.
 
 Output ONLY valid JSON — an array of step objects:
 [
@@ -81,8 +84,12 @@ Output ONLY valid JSON — an array of step objects:
   ...
 ]
 
-Keep steps concrete and actionable (not vague). 5-15 steps is typical.
-depends_on is a list of step indices (0-based) that must complete before this step."""
+Rules:
+- Plan only 2-4 steps for the current phase
+- Steps must be concrete and actionable
+- depends_on is a list of step indices (0-based) that must complete before this step
+- You will see results from completed steps in future calls and can plan accordingly
+- Do NOT include speculative steps like "if tests fail, fix them" — wait for actual results"""
 
         user = f"""Task: {self.config.task_name}
 
@@ -168,16 +175,17 @@ Output ONLY valid JSON:
 }
 
 Rules:
-- Only dispatch steps whose dependencies are all "done"
-- Carefully review the Findings of completed steps. If findings indicate
-  failure (error messages, "file not found", exceptions, "FAIL", etc.),
-  update that step's status to "failed" and decide whether to retry with
-  corrected instructions or skip it
-- Set is_complete=true only when ALL deliverables should exist AND the
-  findings confirm successful execution
-- Instructions must be specific and actionable (not vague)
-- When generating instructions for downstream steps, incorporate relevant
-  findings from upstream steps (e.g. file paths, output values)"""
+- Review completed step findings/reports carefully
+- If findings indicate failure, update that step's status to "failed"
+- Add new_steps for the NEXT phase of work (2-4 steps) based on actual results
+  - Do NOT plan far ahead — only plan what logically follows from current results
+  - If code was changed, the next step should be testing
+  - If tests failed, the next step should be fixing, then re-testing
+  - If code was changed by code agent, review agent should verify the changes
+- Set is_complete=true ONLY when ALL deliverables exist on filesystem AND
+  findings/reports confirm successful execution with no outstanding issues
+- Instructions must be specific and actionable
+- new_steps format: [{"description": "...", "assigned_to": "agent_name"}]"""
 
         # Check deliverable existence on disk so coordinator has ground truth
         import os
@@ -254,7 +262,8 @@ The report must be honest and comprehensive. Include:
 - Any issues encountered and how they were resolved
 - Conclusion (success/failure, what the next step should do)
 This report is how the coordinator understands your work. If you don't write it,
-the coordinator cannot evaluate progress or make correct decisions."""
+the coordinator cannot evaluate progress or make correct decisions.
+WRITE THE REPORT AS YOUR VERY LAST ACTION before going idle. This is not optional."""
 
         prior_section = ""
         if prior_findings:
@@ -263,9 +272,32 @@ the coordinator cannot evaluate progress or make correct decisions."""
 Results from prior steps (use these to inform your instruction):
 {prior_findings[:1500]}"""
 
+        # Role-specific rules
+        role_rules = ""
+        agent_lower = agent.name.lower()
+        if "code" in agent_lower or "coder" in agent_lower:
+            role_rules = """
+ROLE RULES (code agent):
+- You do NOT have a GPU or test environment. NEVER run pytest, tests, or benchmarks.
+- Edit source files IN-PLACE in the project directory. Do NOT save code files to the output directory.
+- The output directory is ONLY for reports and summaries, not for code or diffs.
+- After editing, verify syntax with 'python -c "import ast; ast.parse(open(FILE).read())"' only."""
+        elif "test" in agent_lower or "tester" in agent_lower:
+            role_rules = """
+ROLE RULES (test agent):
+- You are the ONLY agent with access to GPU test environments.
+- All test execution happens on remote GPU nodes via SSH.
+- Report test results clearly: each test PASS/FAIL, perf numbers with ratios."""
+        elif "review" in agent_lower or "reviewer" in agent_lower:
+            role_rules = """
+ROLE RULES (review agent):
+- You read and analyze code. You do NOT modify source files.
+- Produce detailed comparison reports and change recommendations.
+- Save reports to the output directory using absolute paths."""
+
         system = f"""You are supervising a Claude Code agent named "{agent.name}".
 Role: {agent.role}
-{path_info}{report_info}
+{path_info}{report_info}{role_rules}
 Generate ONE clear, actionable instruction for this agent. Be specific about:
 - What to do
 - What files to read/create/modify (use correct paths!)
