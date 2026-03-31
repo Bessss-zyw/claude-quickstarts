@@ -352,7 +352,7 @@ def run(config: HarnessConfig) -> None:
                     continue
 
             monitor_rounds = 0
-            max_monitor_rounds = 600  # ~30 min with 3s poll
+            max_monitor_rounds = 1200  # ~60 min with 3s poll
 
             while active_agents and monitor_rounds < max_monitor_rounds:
                 monitor_rounds += 1
@@ -573,12 +573,16 @@ def run(config: HarnessConfig) -> None:
                         log.info("Dispatched step %d to %s (during monitor)", step["id"], agent_name)
 
             # ── Phase 3b: Resolve stale active_agents after monitor exit ──
-            # If the monitor loop exited due to max_monitor_rounds but some
-            # agents are still in active_agents, we must resolve them.
-            # Otherwise they stay in_progress forever (deadlock).
+            # If the monitor loop exited due to max_monitor_rounds (~1h) but
+            # some agents are still in active_agents, we must resolve them.
+            # Strategy:
+            #   - If report file exists → genuinely done, mark done.
+            #   - Otherwise → interrupt the specialist, ask it to report
+            #     what it accomplished so far, then mark as failed so the
+            #     coordinator can re-plan the unfinished portion.
             if active_agents:
                 stale = list(active_agents.items())
-                log.warning("Monitor loop exited with %d still-active agents: %s",
+                log.warning("Monitor loop timed out with %d still-active agents: %s",
                             len(stale), [n for n, _ in stale])
                 for agent_name, step_id in stale:
                     cc = instances[agent_name]
@@ -595,18 +599,44 @@ def run(config: HarnessConfig) -> None:
                                 step["findings"] = result_text[:2000]
                                 break
                     else:
-                        # No report — specialist didn't finish cleanly.
-                        # Mark done with warning so it doesn't block forever.
-                        log.warning("[%s] step %d has NO report after monitor timeout — "
-                                    "marking done with pane-extracted findings",
+                        # No report — specialist is still working or stuck.
+                        # Interrupt it and ask for a status report.
+                        log.warning("[%s] step %d timed out (no report after ~1h). "
+                                    "Interrupting and requesting status report.",
                                     agent_name, step_id)
+                        cc.send(
+                            "TIMEOUT: Your task has exceeded the time limit. "
+                            "STOP what you are doing immediately. Write a status report to "
+                            f"{report_file} describing: (1) what you completed, "
+                            "(2) what is still unfinished, (3) any errors encountered. "
+                            "Write the report NOW as your very last action."
+                        )
+                        dispatch_times[agent_name] = time.time()
+
+                        # Give specialist up to 90s to write the report
+                        for _wait in range(30):
+                            time.sleep(3)
+                            if os.path.isfile(report_file):
+                                log.info("[%s] step %d wrote timeout report", agent_name, step_id)
+                                break
+
+                        # Extract whatever we can
                         result_text = extract_last_response(cc.capture())
                         cc.save_log(cc.capture())
+
+                        if os.path.isfile(report_file):
+                            try:
+                                with open(report_file, encoding="utf-8") as f:
+                                    result_text = f.read()[:2000]
+                            except Exception:
+                                pass
+
+                        # Mark as FAILED so coordinator knows to re-plan unfinished work
                         for step in plan["steps"]:
                             if step["id"] == step_id:
-                                step["status"] = "done"
+                                step["status"] = "failed"
                                 step["findings"] = (
-                                    "[WARNING: monitor timeout, no step report written] "
+                                    "[TIMEOUT: task exceeded time limit, partially completed] "
                                     + result_text[:1800]
                                 )
                                 break
