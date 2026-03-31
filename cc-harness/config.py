@@ -109,6 +109,7 @@ class HarnessConfig:
     coordinator_model: str = "aws/anthropic/bedrock-claude-opus-4-6"
     coordinator_base_url: str = ""
     coordinator_api_key: str = ""
+    coordinator_api_type: str = "openai"  # "openai" (NVIDIA endpoint) or "anthropic" (native, with prompt caching)
 
     @property
     def harness_path(self) -> str:
@@ -234,5 +235,6 @@ def load_config(task_file: str, **overrides) -> HarnessConfig:
         coordinator_model=coord_cfg.get("model", "aws/anthropic/bedrock-claude-opus-4-6"),
         coordinator_base_url=base_url,
         coordinator_api_key=api_key,
+        coordinator_api_type=coord_cfg.get("api_type", "openai"),
     )
     return cfg

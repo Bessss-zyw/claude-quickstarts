@@ -32,6 +32,11 @@ harness:
   skip_permissions: false                   # true = launch CC with --dangerouslySkipPermissions
                                             # (skips all permission prompts — faster but no safety checks)
 
+# Optional coordinator settings
+# coordinator:
+#   api_type: anthropic                      # "openai" (default, NVIDIA endpoint) or "anthropic" (native, with prompt caching)
+#   model: claude-opus-4-6                   # model name (depends on api_type)
+
 # ── Agent team ──────────────────────────────────────────────────────────
 #
 # • coordinator: pure Opus API — plans, assigns, reviews (NOT a CC instance)

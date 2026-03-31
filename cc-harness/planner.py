@@ -6,8 +6,6 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from openai import OpenAI
-
 if TYPE_CHECKING:
     from config import AgentDef, HarnessConfig
 
@@ -26,23 +24,35 @@ class Planner:
     def __init__(self, config: "HarnessConfig") -> None:
         self.config = config
         self.model = config.coordinator_model
+        self._api_type = config.coordinator_api_type  # "openai" or "anthropic"
 
-        kwargs: dict = {}
-        if config.coordinator_base_url:
-            kwargs["base_url"] = config.coordinator_base_url
-        if config.coordinator_api_key:
-            kwargs["api_key"] = config.coordinator_api_key
+        if self._api_type == "anthropic":
+            import anthropic
+            kwargs: dict = {}
+            if config.coordinator_api_key:
+                kwargs["api_key"] = config.coordinator_api_key
+            if config.coordinator_base_url:
+                kwargs["base_url"] = config.coordinator_base_url
+            self._anthropic = anthropic.Anthropic(**kwargs)
+            self._openai = None
+            logger.info("Coordinator using Anthropic API (prompt caching enabled)")
+        else:
+            from openai import OpenAI
+            kwargs = {}
+            if config.coordinator_base_url:
+                kwargs["base_url"] = config.coordinator_base_url
+            if config.coordinator_api_key:
+                kwargs["api_key"] = config.coordinator_api_key
+            self._openai = OpenAI(**kwargs)
+            self._anthropic = None
+            logger.info("Coordinator using OpenAI-compatible API")
 
-        self._client = OpenAI(**kwargs)
         self._total_prompt = 0
         self._total_completion = 0
 
         # Persistent conversation history for the coordinator.
-        # The system message is set once; subsequent calls append user/assistant turns.
         self._history: list[dict] = []
         self._system_msg: str = ""
-        # Max history turns to keep (user+assistant = 1 turn). Oldest turns
-        # are dropped when exceeded to stay within context window limits.
         self._max_history_turns: int = 40  # ~20 round-trips
 
     @staticmethod
@@ -52,25 +62,79 @@ class Planner:
         stripped = re.sub(r"```\w*\s*\n?", "", text)
         return stripped.strip()
 
-    def _call(self, system: str, user: str, temperature: float = 0.0) -> str:
-        """Make an Opus API call, appending to conversation history.
+    # ── API call methods ──────────────────────────────────────────────────
 
-        The first call sets the system message. Subsequent calls reuse the
-        same system message and accumulate user/assistant turns.
+    def _call_openai(self, messages: list[dict], temperature: float) -> str:
+        """OpenAI-compatible API call (NVIDIA endpoint, etc.)."""
+        resp = self._openai.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=4096,
+        )
+        usage = getattr(resp, "usage", None)
+        if usage:
+            self._total_prompt += getattr(usage, "prompt_tokens", 0)
+            self._total_completion += getattr(usage, "completion_tokens", 0)
+        return resp.choices[0].message.content or ""
+
+    def _call_anthropic(self, system: str, messages: list[dict],
+                        temperature: float, use_cache: bool) -> str:
+        """Anthropic native API call with optional prompt caching.
+
+        When use_cache=True, enables automatic prompt caching so that the
+        system prompt and earlier conversation turns are cached server-side.
+        Subsequent calls reuse the cache (90% cost reduction, lower latency).
         """
-        # Set system message on first call; update if changed (different phase)
+        kwargs: dict = {
+            "model": self.model,
+            "max_tokens": 4096,
+            "temperature": temperature,
+            "system": system,
+            "messages": messages,
+        }
+        if use_cache:
+            kwargs["cache_control"] = {"type": "ephemeral"}
+
+        resp = self._anthropic.messages.create(**kwargs)
+        usage = getattr(resp, "usage", None)
+        if usage:
+            self._total_prompt += getattr(usage, "input_tokens", 0)
+            self._total_completion += getattr(usage, "output_tokens", 0)
+            cached = getattr(usage, "cache_read_input_tokens", 0)
+            created = getattr(usage, "cache_creation_input_tokens", 0)
+            if cached or created:
+                logger.debug("Cache: read=%d, created=%d tokens", cached, created)
+        # Anthropic returns content blocks
+        return "".join(
+            b.text for b in resp.content if hasattr(b, "text")
+        )
+
+    def _raw_call(self, system: str, messages: list[dict],
+                  temperature: float = 0.0, use_cache: bool = False) -> str:
+        """Dispatch to the appropriate API backend."""
+        if self._api_type == "anthropic":
+            return self._call_anthropic(system, messages, temperature, use_cache)
+        else:
+            # OpenAI format: system message goes in messages array
+            full = [{"role": "system", "content": system}] + messages
+            return self._call_openai(full, temperature)
+
+    def _call(self, system: str, user: str, temperature: float = 0.0) -> str:
+        """Make a stateful API call, appending to conversation history.
+
+        Uses prompt caching on Anthropic backend so that the growing
+        conversation history doesn't cause increasing latency/cost.
+        """
         if not self._system_msg:
             self._system_msg = system
         elif system != self._system_msg:
-            # New phase (e.g. plan → evaluate → instruct): update system msg
             self._system_msg = system
 
-        # Append the new user turn
         self._history.append({"role": "user", "content": user})
 
-        # Truncate history if too long (keep most recent turns)
+        # Truncate history if too long
         if len(self._history) > self._max_history_turns:
-            # Keep first 2 messages (initial plan context) + latest turns
             keep_first = 2
             keep_last = self._max_history_turns - keep_first
             trimmed = self._history[:keep_first] + self._history[-keep_last:]
@@ -78,56 +142,30 @@ class Planner:
                         len(self._history), len(trimmed))
             self._history = trimmed
 
-        # Build full messages: system + history
-        messages = [{"role": "system", "content": self._system_msg}] + self._history
-
         try:
-            resp = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=4096,
+            reply = self._raw_call(
+                self._system_msg, self._history,
+                temperature=temperature, use_cache=True,
             )
-            usage = getattr(resp, "usage", None)
-            if usage:
-                self._total_prompt += getattr(usage, "prompt_tokens", 0)
-                self._total_completion += getattr(usage, "completion_tokens", 0)
-            reply = resp.choices[0].message.content or ""
-
-            # Append assistant reply to history
             self._history.append({"role": "assistant", "content": reply})
-
             return reply
         except Exception as e:
-            logger.error("Opus API call failed: %s", e)
+            logger.error("API call failed: %s", e)
             error_msg = json.dumps({"error": str(e)})
-            # Still append to history so context stays consistent
             self._history.append({"role": "assistant", "content": error_msg})
             return error_msg
 
     def _call_stateless(self, system: str, user: str, temperature: float = 0.0) -> str:
-        """Make a one-shot API call WITHOUT affecting conversation history.
+        """One-shot API call WITHOUT affecting conversation history.
 
-        Use for side-channel calls like permission review or instruction
-        generation that shouldn't pollute the coordinator's main context.
+        Used for permission review — shouldn't pollute the coordinator's
+        main context.
         """
+        messages = [{"role": "user", "content": user}]
         try:
-            resp = self._client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                temperature=temperature,
-                max_tokens=4096,
-            )
-            usage = getattr(resp, "usage", None)
-            if usage:
-                self._total_prompt += getattr(usage, "prompt_tokens", 0)
-                self._total_completion += getattr(usage, "completion_tokens", 0)
-            return resp.choices[0].message.content or ""
+            return self._raw_call(system, messages, temperature=temperature, use_cache=False)
         except Exception as e:
-            logger.error("Opus API call failed: %s", e)
+            logger.error("API call failed: %s", e)
             return json.dumps({"error": str(e)})
 
     # ── Planning ───────────────────────────────────────────────────────
