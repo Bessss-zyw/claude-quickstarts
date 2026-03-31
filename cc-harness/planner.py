@@ -41,6 +41,9 @@ class Planner:
         # The system message is set once; subsequent calls append user/assistant turns.
         self._history: list[dict] = []
         self._system_msg: str = ""
+        # Max history turns to keep (user+assistant = 1 turn). Oldest turns
+        # are dropped when exceeded to stay within context window limits.
+        self._max_history_turns: int = 40  # ~20 round-trips
 
     @staticmethod
     def _strip_code_fences(text: str) -> str:
@@ -64,6 +67,16 @@ class Planner:
 
         # Append the new user turn
         self._history.append({"role": "user", "content": user})
+
+        # Truncate history if too long (keep most recent turns)
+        if len(self._history) > self._max_history_turns:
+            # Keep first 2 messages (initial plan context) + latest turns
+            keep_first = 2
+            keep_last = self._max_history_turns - keep_first
+            trimmed = self._history[:keep_first] + self._history[-keep_last:]
+            logger.info("Trimming coordinator history: %d → %d messages",
+                        len(self._history), len(trimmed))
+            self._history = trimmed
 
         # Build full messages: system + history
         messages = [{"role": "system", "content": self._system_msg}] + self._history
@@ -375,7 +388,7 @@ Recent agent output (last screen):
 
 Generate the instruction."""
 
-        return self._call_stateless(system, user, temperature=0.1).strip()
+        return self._call(system, user, temperature=0.1).strip()
 
     # ── Permission review ────────────────────────────────────────────────
 
