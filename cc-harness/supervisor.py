@@ -204,9 +204,25 @@ def run(config: HarnessConfig) -> None:
     plan = load_plan(config)
     if plan is not None:
         log.info("Resuming from existing plan (%d steps)", len(plan["steps"]))
-        # Re-derive active_agents from in_progress steps
-        for step in get_in_progress_steps(plan):
-            active_agents[step["assigned_to"]] = step["id"]
+        # Reset in_progress steps to pending — the old CC instances are gone,
+        # so any in_progress step needs to be re-dispatched from scratch.
+        # Check for report files first: if a report exists, the step actually
+        # completed (just wasn't marked done before the harness died).
+        for step in list(get_in_progress_steps(plan)):
+            report_file = config.report_path(step["id"])
+            if os.path.isfile(report_file):
+                log.info("Resume: step %d has report file — marking done", step["id"])
+                step["status"] = "done"
+                try:
+                    with open(report_file, encoding="utf-8") as f:
+                        step["findings"] = f.read()[:2000]
+                except Exception:
+                    step["findings"] = "(report file exists but could not be read)"
+            else:
+                log.info("Resume: step %d was in_progress with no report — resetting to pending",
+                         step["id"])
+                step["status"] = "pending"
+        save_plan(config, plan)
 
     iteration = 0
     try:
@@ -555,6 +571,48 @@ def run(config: HarnessConfig) -> None:
                         dispatch_times[agent_name] = time.time()
                         save_plan(config, plan)
                         log.info("Dispatched step %d to %s (during monitor)", step["id"], agent_name)
+
+            # ── Phase 3b: Resolve stale active_agents after monitor exit ──
+            # If the monitor loop exited due to max_monitor_rounds but some
+            # agents are still in active_agents, we must resolve them.
+            # Otherwise they stay in_progress forever (deadlock).
+            if active_agents:
+                stale = list(active_agents.items())
+                log.warning("Monitor loop exited with %d still-active agents: %s",
+                            len(stale), [n for n, _ in stale])
+                for agent_name, step_id in stale:
+                    cc = instances[agent_name]
+                    report_file = config.report_path(step_id)
+
+                    if os.path.isfile(report_file):
+                        # Report exists — specialist finished, just mark done
+                        log.info("[%s] step %d has report file — marking done",
+                                 agent_name, step_id)
+                        result_text = extract_last_response(cc.capture())
+                        for step in plan["steps"]:
+                            if step["id"] == step_id:
+                                step["status"] = "done"
+                                step["findings"] = result_text[:2000]
+                                break
+                    else:
+                        # No report — specialist didn't finish cleanly.
+                        # Mark done with warning so it doesn't block forever.
+                        log.warning("[%s] step %d has NO report after monitor timeout — "
+                                    "marking done with pane-extracted findings",
+                                    agent_name, step_id)
+                        result_text = extract_last_response(cc.capture())
+                        cc.save_log(cc.capture())
+                        for step in plan["steps"]:
+                            if step["id"] == step_id:
+                                step["status"] = "done"
+                                step["findings"] = (
+                                    "[WARNING: monitor timeout, no step report written] "
+                                    + result_text[:1800]
+                                )
+                                break
+
+                    del active_agents[agent_name]
+                save_plan(config, plan)
 
             # ── Phase 4: Check stop conditions ────────────────────────
             # Only two valid exit conditions:
