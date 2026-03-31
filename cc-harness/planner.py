@@ -15,7 +15,13 @@ logger = logging.getLogger(__name__)
 
 
 class Planner:
-    """Use Opus API to make coordinator decisions (plan, evaluate, instruct)."""
+    """Use Opus API to make coordinator decisions (plan, evaluate, instruct).
+
+    Maintains a conversation history so the coordinator retains memory across
+    planning, evaluation, and instruction calls within a single harness run.
+    This lets it remember its own reasoning, past decisions, and specialist
+    results instead of starting from scratch each time.
+    """
 
     def __init__(self, config: "HarnessConfig") -> None:
         self.config = config
@@ -31,16 +37,67 @@ class Planner:
         self._total_prompt = 0
         self._total_completion = 0
 
+        # Persistent conversation history for the coordinator.
+        # The system message is set once; subsequent calls append user/assistant turns.
+        self._history: list[dict] = []
+        self._system_msg: str = ""
+
     @staticmethod
     def _strip_code_fences(text: str) -> str:
         """Strip markdown code fences (```json ... ```) from LLM output."""
         import re
-        # Match ```<optional lang>\n ... ``` patterns
         stripped = re.sub(r"```\w*\s*\n?", "", text)
         return stripped.strip()
 
     def _call(self, system: str, user: str, temperature: float = 0.0) -> str:
-        """Make a single Opus API call. Returns the text response."""
+        """Make an Opus API call, appending to conversation history.
+
+        The first call sets the system message. Subsequent calls reuse the
+        same system message and accumulate user/assistant turns.
+        """
+        # Set system message on first call; update if changed (different phase)
+        if not self._system_msg:
+            self._system_msg = system
+        elif system != self._system_msg:
+            # New phase (e.g. plan → evaluate → instruct): update system msg
+            self._system_msg = system
+
+        # Append the new user turn
+        self._history.append({"role": "user", "content": user})
+
+        # Build full messages: system + history
+        messages = [{"role": "system", "content": self._system_msg}] + self._history
+
+        try:
+            resp = self._client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=4096,
+            )
+            usage = getattr(resp, "usage", None)
+            if usage:
+                self._total_prompt += getattr(usage, "prompt_tokens", 0)
+                self._total_completion += getattr(usage, "completion_tokens", 0)
+            reply = resp.choices[0].message.content or ""
+
+            # Append assistant reply to history
+            self._history.append({"role": "assistant", "content": reply})
+
+            return reply
+        except Exception as e:
+            logger.error("Opus API call failed: %s", e)
+            error_msg = json.dumps({"error": str(e)})
+            # Still append to history so context stays consistent
+            self._history.append({"role": "assistant", "content": error_msg})
+            return error_msg
+
+    def _call_stateless(self, system: str, user: str, temperature: float = 0.0) -> str:
+        """Make a one-shot API call WITHOUT affecting conversation history.
+
+        Use for side-channel calls like permission review or instruction
+        generation that shouldn't pollute the coordinator's main context.
+        """
         try:
             resp = self._client.chat.completions.create(
                 model=self.model,
@@ -318,7 +375,7 @@ Recent agent output (last screen):
 
 Generate the instruction."""
 
-        return self._call(system, user, temperature=0.1).strip()
+        return self._call_stateless(system, user, temperature=0.1).strip()
 
     # ── Permission review ────────────────────────────────────────────────
 
@@ -350,7 +407,7 @@ Permission prompt:
 
 Should this be allowed?"""
 
-        raw = self._call(system, user, temperature=0.0)
+        raw = self._call_stateless(system, user, temperature=0.0)
         raw = self._strip_code_fences(raw)
 
         try:
