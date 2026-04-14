@@ -113,9 +113,9 @@ def _parse_stage(
 
     stage_type = StageType(raw.get("type", "subtask"))
 
-    # Parse sub-stages for loop stages with a "stages" key
+    # Parse sub-stages for loop and map stages with a "stages" key
     sub_stages: dict[str, StageConfig] = {}
-    if stage_type == StageType.LOOP and "stages" in raw:
+    if stage_type in (StageType.LOOP, StageType.MAP) and "stages" in raw:
         parent_defaults = {
             "model": get("model", "claude-sonnet-4-5"),
             "effort": get("effort", "medium"),
@@ -154,6 +154,8 @@ def _parse_stage(
         max_iterations=raw.get("max_iterations", 5),
         convergence=_parse_convergence(raw.get("convergence")),
         sub_stages=sub_stages,
+        items=raw.get("items"),
+        map_max_parallel=raw.get("max_parallel", 4),
         extra_flags=raw.get("extra_flags", []),
     )
 

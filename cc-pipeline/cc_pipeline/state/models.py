@@ -90,6 +90,25 @@ class LoopState:
 
 
 @dataclass
+class ItemState:
+    """State of a single item in a map stage."""
+    index: int
+    status: StageStatus = StageStatus.PENDING
+    started_at: str | None = None
+    finished_at: str | None = None
+    outputs: dict[str, Any] | None = None
+    sub_stages: dict[str, SubStageState] = field(default_factory=dict)
+    error: str | None = None
+
+
+@dataclass
+class MapState:
+    """State for map-type stages."""
+    total_items: int = 0
+    items: dict[str, ItemState] = field(default_factory=dict)  # key = str(index)
+
+
+@dataclass
 class StageState:
     """State of a single pipeline stage."""
     name: str
@@ -101,6 +120,7 @@ class StageState:
     error: str | None = None
     retry_count: int = 0
     loop: LoopState | None = None
+    map_state: MapState | None = None
     outputs: dict[str, Any] | None = None
 
 

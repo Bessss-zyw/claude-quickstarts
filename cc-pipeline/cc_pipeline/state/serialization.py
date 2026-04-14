@@ -19,8 +19,10 @@ from ..constants.enums import (
 from ..utils.time_utils import now_iso
 from ..config.models import TaskConfig
 from .models import (
+    ItemState,
     IterationState,
     LoopState,
+    MapState,
     PipelineState,
     StageState,
     SubStageState,
@@ -35,9 +37,12 @@ def fresh_state(
     stages: dict[str, StageState] = {}
     for name, cfg in config.stages.items():
         loop = None
+        map_st = None
         if cfg.type == StageType.LOOP:
             loop = LoopState(max_iterations=cfg.max_iterations)
-        stages[name] = StageState(name=name, loop=loop)
+        elif cfg.type == StageType.MAP:
+            map_st = MapState()
+        stages[name] = StageState(name=name, loop=loop, map_state=map_st)
 
     return PipelineState(
         pipeline_name=config.name,
@@ -65,6 +70,7 @@ def serialize(state: PipelineState) -> dict:
             "retry_count": ss.retry_count,
             "outputs": ss.outputs,
             "loop": _serialize_loop(ss.loop),
+            "map_state": _serialize_map(ss.map_state),
         }
         stages[name] = sd
 
@@ -120,6 +126,72 @@ def _serialize_loop(loop: LoopState | None) -> dict | None:
     }
 
 
+def _serialize_map(map_state: MapState | None) -> dict | None:
+    if map_state is None:
+        return None
+    items = {}
+    for k, item in map_state.items.items():
+        sub_stages = {}
+        for sn, ss in item.sub_stages.items():
+            sub_stages[sn] = {
+                "name": ss.name,
+                "status": ss.status.value,
+                "started_at": ss.started_at,
+                "finished_at": ss.finished_at,
+                "outputs": ss.outputs,
+                "session_id": ss.session_id,
+                "token_usage": (
+                    ss.token_usage.to_dict() if ss.token_usage else None
+                ),
+                "error": ss.error,
+            }
+        items[k] = {
+            "index": item.index,
+            "status": item.status.value,
+            "started_at": item.started_at,
+            "finished_at": item.finished_at,
+            "outputs": item.outputs,
+            "sub_stages": sub_stages,
+            "error": item.error,
+        }
+    return {
+        "total_items": map_state.total_items,
+        "items": items,
+    }
+
+
+def _deserialize_map(raw: dict | None) -> MapState | None:
+    if not raw:
+        return None
+    items: dict[str, ItemState] = {}
+    for k, idata in raw.get("items", {}).items():
+        sub_stages: dict[str, SubStageState] = {}
+        for sn, sdata in idata.get("sub_stages", {}).items():
+            sub_stages[sn] = SubStageState(
+                name=sdata.get("name", sn),
+                status=StageStatus(sdata.get("status", "pending")),
+                started_at=sdata.get("started_at"),
+                finished_at=sdata.get("finished_at"),
+                outputs=sdata.get("outputs"),
+                session_id=sdata.get("session_id"),
+                token_usage=_deserialize_usage(sdata.get("token_usage")),
+                error=sdata.get("error"),
+            )
+        items[k] = ItemState(
+            index=idata.get("index", int(k)),
+            status=StageStatus(idata.get("status", "pending")),
+            started_at=idata.get("started_at"),
+            finished_at=idata.get("finished_at"),
+            outputs=idata.get("outputs"),
+            sub_stages=sub_stages,
+            error=idata.get("error"),
+        )
+    return MapState(
+        total_items=raw.get("total_items", 0),
+        items=items,
+    )
+
+
 def deserialize(path: Path) -> PipelineState:
     """Reconstruct PipelineState from a JSON file."""
     with open(path) as f:
@@ -131,6 +203,7 @@ def _dict_to_state(data: dict) -> PipelineState:
     stages: dict[str, StageState] = {}
     for sname, sd in data.get("stages", {}).items():
         loop = _deserialize_loop(sd.get("loop"))
+        map_st = _deserialize_map(sd.get("map_state"))
         tu = _deserialize_usage(sd.get("token_usage"))
         stages[sname] = StageState(
             name=sd.get("name", sname),
@@ -142,6 +215,7 @@ def _dict_to_state(data: dict) -> PipelineState:
             error=sd.get("error"),
             retry_count=sd.get("retry_count", 0),
             loop=loop,
+            map_state=map_st,
             outputs=sd.get("outputs"),
         )
 

@@ -33,6 +33,8 @@ def validate_dag(config: TaskConfig) -> None:
     _check_acyclic(config, stage_names)
 
     for stage in config.stages.values():
+        if stage.type == StageType.MAP:
+            _validate_map_stage(stage)
         if stage.sub_stages:
             _validate_sub_stages(stage.name, stage.sub_stages)
 
@@ -78,16 +80,38 @@ def _check_acyclic(config: TaskConfig, names: set[str]) -> None:
         )
 
 
+def _validate_map_stage(stage) -> None:
+    """Validate map-stage-specific constraints.
+
+    Checks:
+    1. Must have ``items`` field.
+    2. Must have ``stages`` (sub-stages).
+    3. ``map_max_parallel`` >= 1.
+    """
+    if stage.items is None:
+        raise DagValidationError(
+            f"Map stage {stage.name!r} must have an 'items' field"
+        )
+    if not stage.sub_stages:
+        raise DagValidationError(
+            f"Map stage {stage.name!r} must have 'stages' (sub-stages)"
+        )
+    if stage.map_max_parallel < 1:
+        raise DagValidationError(
+            f"Map stage {stage.name!r}: max_parallel must be >= 1"
+        )
+
+
 def _validate_sub_stages(
     parent_name: str, sub_stages: dict,
 ) -> None:
-    """Validate sub-stage constraints within a loop stage.
+    """Validate sub-stage constraints within a loop/map stage.
 
     Checks:
     1. Sub-stages must not be empty.
     2. Sub-stage depends_on must reference sibling sub-stages only.
     3. No cycles in the sub-stage DAG.
-    4. Sub-stages cannot themselves be loops.
+    4. Sub-stages cannot themselves be loops or maps.
     """
     sub_names = set(sub_stages)
 
@@ -97,11 +121,11 @@ def _validate_sub_stages(
         )
 
     for sub in sub_stages.values():
-        # No nested loops
-        if sub.type == StageType.LOOP:
+        # No nested loops or maps
+        if sub.type in (StageType.LOOP, StageType.MAP):
             raise DagValidationError(
                 f"Sub-stage {sub.name!r} in {parent_name!r} "
-                f"cannot be a loop (no nesting)"
+                f"cannot be a {sub.type.value} (no nesting)"
             )
         # depends_on must reference siblings only
         for dep in sub.depends_on:

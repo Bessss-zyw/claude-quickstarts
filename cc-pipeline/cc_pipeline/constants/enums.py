@@ -44,6 +44,7 @@ class StageType(str, Enum):
     PRE_EXEC = "pre-exec"
     SUBTASK = "subtask"
     LOOP = "loop"
+    MAP = "map"
     POST_EXEC = "post-exec"
 
 

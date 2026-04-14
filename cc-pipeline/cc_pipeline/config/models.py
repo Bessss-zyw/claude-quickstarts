@@ -71,6 +71,10 @@ class StageConfig:
     convergence: ConvergenceSpec | None = None
     sub_stages: dict[str, StageConfig] = field(default_factory=dict)
 
+    # Map-specific
+    items: str | list | None = None      # JSON file path or inline list
+    map_max_parallel: int = 4            # max concurrent items for map
+
     # Extra flags
     extra_flags: list[str] = field(default_factory=list)
 

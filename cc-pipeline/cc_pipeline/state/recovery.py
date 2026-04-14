@@ -42,4 +42,15 @@ def recover_running_stages(state: PipelineState) -> int:
                         ss.status = StageStatus.PENDING
                         ss.started_at = None
 
+        if stage.map_state:
+            for item in stage.map_state.items.values():
+                if item.status == StageStatus.RUNNING:
+                    item.status = StageStatus.PENDING
+                    item.started_at = None
+
+                for ss in item.sub_stages.values():
+                    if ss.status == StageStatus.RUNNING:
+                        ss.status = StageStatus.PENDING
+                        ss.started_at = None
+
     return reset_count

@@ -26,6 +26,7 @@ from ..state.manager import StateManager
 from ..strategies.base import StageContext, StrategyRegistry
 from ..strategies.convergence import build_default_operators
 from ..strategies.loop import LoopStrategy
+from ..strategies.map import MapStrategy
 from ..strategies.single_shot import SingleShotStrategy
 from ..templates.engine import TemplateEngine
 from .display import print_pipeline_summary, print_waves, state_summary
@@ -116,6 +117,7 @@ def _compose(
     strategies.register(StageType.SUBTASK, single)
     strategies.register(StageType.POST_EXEC, single)
     strategies.register(StageType.LOOP, LoopStrategy(operators))
+    strategies.register(StageType.MAP, MapStrategy())
 
     def ctx_factory(stage_name: str) -> StageContext:
         return StageContext(

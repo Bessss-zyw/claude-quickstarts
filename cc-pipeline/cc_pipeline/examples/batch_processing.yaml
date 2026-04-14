@@ -1,0 +1,46 @@
+name: "batch-meeting-recap"
+description: "Process multiple meeting sessions concurrently"
+working_dir: /tmp/cc-pipeline-batch
+
+defaults:
+  model: claude-sonnet-4-5
+  effort: medium
+  permissions: full
+
+stages:
+  process:
+    type: map
+    items:
+      - title: "Session 1"
+        video_url: "https://example.com/video1"
+        output_dir: "session-01"
+      - title: "Session 2"
+        video_url: "https://example.com/video2"
+        output_dir: "session-02"
+    max_parallel: 2
+    stages:
+      download:
+        description: "Download video"
+        prompt_template: |
+          Download video from {{item.video_url}}
+          Save to output/{{item.output_dir}}/recording.mp4
+        outputs:
+          video_path: {type: text}
+      analyze:
+        description: "Analyze content"
+        depends_on: [download]
+        prompt_template: |
+          Analyze video at {{map.stages.download.outputs.video_path}}
+          Title: {{item.title}}
+        outputs:
+          summary: {type: text}
+
+  report:
+    type: post-exec
+    depends_on: [process]
+    effort: low
+    prompt_template: |
+      Summarize all processed sessions.
+      Results: {{stages.process.outputs}}
+    outputs:
+      report: {type: text}
