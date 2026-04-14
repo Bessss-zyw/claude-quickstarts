@@ -103,7 +103,9 @@ async def run_cc_once(
     outputs = ctx.extractors.extract_all(result.text, stage_cfg.outputs)
     ctx.artifacts.save_result(
         ctx.stage_name, result, outputs=outputs, iteration=iteration,
-        sub_stage=sub_stage,
+        sub_stage=sub_stage, prompt=prompt,
     )
-    ctx.artifacts.save_log(ctx.stage_name, result)
+    ctx.artifacts.save_log(
+        ctx.stage_name, result, iteration=iteration, sub_stage=sub_stage,
+    )
     return outputs, result

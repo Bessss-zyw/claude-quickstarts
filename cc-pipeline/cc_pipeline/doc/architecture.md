@@ -99,7 +99,7 @@ Five focused modules, split from an original monolithic `ArtifactStore`:
 | Module | Responsibility |
 |--------|---------------|
 | `layout.py` | Pure path computation under `.pipeline/` — no I/O |
-| `saver.py` | Writes `raw_response.txt`, `meta.json`, `output.json` |
+| `saver.py` | Writes `response.txt`, `prompt.txt`, `meta.json`, `outputs.json` |
 | `reader.py` | Reads previously saved stage outputs |
 | `input_resolver.py` | Resolves `glob`, `file`, `literal` inputs |
 | `store.py` | Thin facade composing the above four |

@@ -15,7 +15,7 @@ class ArtifactReader:
         self._layout = layout
 
     def get_stage_outputs(self, stage_name: str) -> dict[str, Any]:
-        path = self._layout.output_path(stage_name)
+        path = self._layout.outputs_path(stage_name)
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
         return {}
@@ -23,7 +23,7 @@ class ArtifactReader:
     def get_iteration_outputs(
         self, stage_name: str, iteration: int,
     ) -> dict[str, Any]:
-        path = self._layout.output_path(stage_name, iteration)
+        path = self._layout.outputs_path(stage_name, iteration)
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
         return {}
@@ -31,13 +31,13 @@ class ArtifactReader:
     def get_sub_stage_outputs(
         self, stage_name: str, iteration: int, sub_stage: str,
     ) -> dict[str, Any]:
-        path = self._layout.output_path(stage_name, iteration, sub_stage)
+        path = self._layout.outputs_path(stage_name, iteration, sub_stage)
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
         return {}
 
-    def get_raw_response(self, stage_name: str) -> str:
-        path = self._layout.raw_response_path(stage_name)
+    def get_response(self, stage_name: str) -> str:
+        path = self._layout.response_path(stage_name)
         if path.exists():
             return path.read_text(encoding="utf-8")
         return ""

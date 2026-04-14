@@ -32,13 +32,18 @@ class ArtifactStore:
         outputs: dict[str, Any] | None = None,
         iteration: int | None = None,
         sub_stage: str | None = None,
+        prompt: str | None = None,
     ) -> None:
         self.saver.save_result(
-            stage_name, result, outputs, iteration, sub_stage,
+            stage_name, result, outputs, iteration, sub_stage, prompt,
         )
 
-    def save_log(self, stage_name: str, result: RunResult) -> None:
-        self.saver.save_log(stage_name, result)
+    def save_log(
+        self, stage_name: str, result: RunResult,
+        iteration: int | None = None,
+        sub_stage: str | None = None,
+    ) -> None:
+        self.saver.save_log(stage_name, result, iteration, sub_stage)
 
     # ---- delegate to reader -----------------------------------------------
     def get_stage_outputs(self, stage_name: str) -> dict[str, Any]:
@@ -48,6 +53,13 @@ class ArtifactStore:
         self, stage_name: str, iteration: int,
     ) -> dict[str, Any]:
         return self.reader.get_iteration_outputs(stage_name, iteration)
+
+    def get_sub_stage_outputs(
+        self, stage_name: str, iteration: int, sub_stage: str,
+    ) -> dict[str, Any]:
+        return self.reader.get_sub_stage_outputs(
+            stage_name, iteration, sub_stage,
+        )
 
     # ---- delegate to resolver ---------------------------------------------
     def resolve_inputs(

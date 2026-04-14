@@ -25,13 +25,14 @@ class ArtifactSaver:
         outputs: dict[str, Any] | None = None,
         iteration: int | None = None,
         sub_stage: str | None = None,
+        prompt: str | None = None,
     ) -> None:
         """Save CC result as stage artifacts."""
-        raw_path = self._layout.raw_response_path(
+        resp_path = self._layout.response_path(
             stage_name, iteration, sub_stage,
         )
-        raw_path.parent.mkdir(parents=True, exist_ok=True)
-        raw_path.write_text(result.text, encoding="utf-8")
+        resp_path.parent.mkdir(parents=True, exist_ok=True)
+        resp_path.write_text(result.text, encoding="utf-8")
 
         meta = {
             "session_id": result.session_id,
@@ -47,18 +48,31 @@ class ArtifactSaver:
         )
 
         if outputs:
-            out_path = self._layout.output_path(
+            out_path = self._layout.outputs_path(
                 stage_name, iteration, sub_stage,
             )
             out_path.write_text(
                 json.dumps(outputs, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
+
+        if prompt is not None:
+            prompt_path = self._layout.prompt_path(
+                stage_name, iteration, sub_stage,
+            )
+            prompt_path.write_text(prompt, encoding="utf-8")
+
         logger.debug("Saved artifacts for %r", stage_name)
 
-    def save_log(self, stage_name: str, result: RunResult) -> None:
+    def save_log(
+        self,
+        stage_name: str,
+        result: RunResult,
+        iteration: int | None = None,
+        sub_stage: str | None = None,
+    ) -> None:
         """Save raw NDJSON stream events."""
-        log_path = self._layout.log_path(stage_name)
+        log_path = self._layout.log_path(stage_name, iteration, sub_stage)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         lines = [json.dumps(e) for e in result.raw_events]
         log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

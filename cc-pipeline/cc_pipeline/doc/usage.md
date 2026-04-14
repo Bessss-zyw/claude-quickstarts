@@ -279,27 +279,21 @@ All pipeline state and artifacts are stored under `<working_dir>/.pipeline/`:
 ```
 .pipeline/
 ├── state.json              # Pipeline state (atomically updated)
-├── artifacts/
-│   ├── analyze/
-│   │   ├── raw_response.txt   # Full CC response text
-│   │   ├── meta.json          # Session ID, token usage, duration
-│   │   └── output.json        # Extracted outputs
-│   ├── fix/
-│   │   ├── raw_response.txt
-│   │   ├── meta.json
-│   │   └── output.json
-│   └── optimize/              # Loop stage
-│       ├── iter_0/
-│       │   ├── raw_response.txt
-│       │   ├── meta.json
-│       │   └── output.json
-│       ├── iter_1/
-│       │   └── ...
-│       ├── raw_response.txt   # Final loop output
-│       └── output.json
-└── logs/
-    ├── analyze.ndjson         # Raw NDJSON stream events
-    └── fix.ndjson
+├── summary.json            # Machine-readable pipeline summary
+├── summary.md              # Human-readable pipeline report
+└── stages/
+    ├── {stage}/                # Single-shot stage
+    │   ├── meta.json           # Session ID, token usage, duration
+    │   ├── prompt.txt          # Rendered prompt sent to CC
+    │   ├── response.txt        # Full CC response text
+    │   ├── outputs.json        # Extracted outputs
+    │   └── events.ndjson       # Raw NDJSON stream events
+    └── {stage}/iter_{N}/[sub/] # Loop stage iteration (with optional sub-stage)
+        ├── meta.json
+        ├── prompt.txt
+        ├── response.txt
+        ├── outputs.json
+        └── events.ndjson
 ```
 
 ## Example Pipelines

@@ -9,6 +9,10 @@ import asyncio
 import logging
 from typing import Any
 
+from pathlib import Path
+
+from ..artifacts.layout import ArtifactLayout
+from ..artifacts.summary import generate_summary_json, generate_summary_md
 from ..config.models import TaskConfig
 from ..state.manager import StateManager
 from ..state.models import PipelineState
@@ -48,8 +52,15 @@ class PipelineOrchestrator:
             logger.error("Pipeline failed: %s", e)
             self._state_mgr.mark_pipeline_failed()
             raise
+        else:
+            self._state_mgr.mark_pipeline_done()
+        finally:
+            layout = ArtifactLayout(
+                Path(self._config.working_dir) / ".pipeline",
+            )
+            generate_summary_json(self._state_mgr.state, layout)
+            generate_summary_md(self._state_mgr.state, layout)
 
-        self._state_mgr.mark_pipeline_done()
         return self._state_mgr.state
 
     async def _run_dag(self) -> None:
