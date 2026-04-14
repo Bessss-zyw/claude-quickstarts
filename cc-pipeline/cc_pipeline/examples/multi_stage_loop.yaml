@@ -1,0 +1,71 @@
+name: "kernel-optimize-multi"
+description: "Iterative kernel optimization with code/test/review loop"
+working_dir: /tmp/cc-pipeline-multi-loop
+
+defaults:
+  model: claude-sonnet-4-5
+  effort: medium
+  max_budget_usd: 2.0
+  permissions: readonly
+
+stages:
+  analyze:
+    type: pre-exec
+    description: "Analyze kernel bottlenecks"
+    prompt_template: |
+      Analyze kernel source. Output JSON: {"bottlenecks": [...]}
+    outputs:
+      bottlenecks: {type: json}
+
+  optimize:
+    type: loop
+    depends_on: [analyze]
+    max_iterations: 5
+    convergence:
+      metric: "test.outputs.speedup"
+      threshold: 1.5
+      operator: ">="
+    stages:
+      code:
+        description: "Apply one optimization"
+        model: claude-opus-4-5
+        effort: high
+        permissions: full
+        prompt_template: |
+          Bottlenecks: {{stages.analyze.outputs.bottlenecks}}
+          {{#if loop.previous}}
+          Review feedback: {{loop.previous.stages.review.outputs.feedback}}
+          {{/if}}
+          Apply the highest-impact optimization.
+        outputs:
+          changes: {type: text}
+      test:
+        description: "Run correctness + performance tests"
+        depends_on: [code]
+        permissions: full
+        prompt_template: |
+          Changes applied: {{loop.stages.code.outputs.changes}}
+          Run full test suite. Report speedup over baseline.
+        outputs:
+          speedup: {type: number}
+          all_pass: {type: text}
+      review:
+        description: "Review code quality"
+        depends_on: [code, test]
+        prompt_template: |
+          Changes: {{loop.stages.code.outputs.changes}}
+          Test speedup: {{loop.stages.test.outputs.speedup}}x
+          Review for correctness, side effects, and code quality.
+        outputs:
+          feedback: {type: text}
+          approved: {type: text}
+
+  report:
+    type: post-exec
+    depends_on: [optimize]
+    effort: low
+    prompt_template: |
+      Speedup achieved: {{stages.optimize.outputs.test.speedup}}x
+      Write optimization summary.
+    outputs:
+      summary: {type: text}

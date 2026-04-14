@@ -1,0 +1,106 @@
+name: "kernel-optimize"
+description: "Profile and iteratively optimize a CUDA/Triton kernel"
+working_dir: /path/to/kernel/project
+
+defaults:
+  model: claude-sonnet-4-5
+  effort: medium
+  max_budget_usd: 2.0
+  permissions: readonly
+  add_dirs:
+    - /path/to/kernel/project
+
+max_parallel: 1  # sequential optimization
+
+stages:
+  analyze-source:
+    type: pre-exec
+    description: "Analyze kernel source and identify optimization targets"
+    model: claude-opus-4-5
+    effort: high
+    max_budget_usd: 3.0
+    prompt_template: |
+      Analyze this kernel implementation and identify performance bottlenecks.
+      Focus on: memory access patterns, occupancy, register pressure, synchronization.
+
+      Output JSON with:
+      - "bottlenecks": array of {location, type, severity, suggestion}
+      - "baseline_expectations": {estimated_throughput, limiting_factor}
+    outputs:
+      bottlenecks:
+        type: json
+        schema: {bottlenecks: array, baseline_expectations: object}
+
+  profile-baseline:
+    type: subtask
+    depends_on: [analyze-source]
+    description: "Run baseline profiling"
+    permissions: full
+    prompt_template: |
+      Run the kernel benchmark to establish baseline performance.
+      Use `python benchmark.py --kernel baseline` and capture the results.
+
+      Output JSON with:
+      - "throughput_gbps": number
+      - "kernel_time_ms": number
+      - "occupancy": number
+    outputs:
+      throughput_gbps: {type: number}
+      kernel_time_ms: {type: number}
+      occupancy: {type: number}
+
+  optimize:
+    type: loop
+    depends_on: [profile-baseline]
+    description: "Iteratively optimize the kernel"
+    max_iterations: 5
+    convergence:
+      metric: "outputs.speedup"
+      threshold: 1.5  # 1.5x over baseline
+      operator: ">="
+    model: claude-opus-4-5
+    effort: max
+    max_budget_usd: 5.0
+    permissions: full
+    prompt_template: |
+      Optimize the kernel based on the analysis.
+
+      Bottlenecks identified: {{stages.analyze-source.outputs.bottlenecks}}
+      Baseline throughput: {{stages.profile-baseline.outputs.throughput_gbps}} GB/s
+
+      {{#if loop.previous}}
+      Previous iteration speedup: {{loop.previous.outputs.speedup}}x
+      Previous changes: {{loop.previous.outputs.changes}}
+      {{/if}}
+
+      1. Apply one optimization (pick the highest-impact remaining bottleneck)
+      2. Run the benchmark
+      3. Report results
+
+      Output JSON with:
+      - "speedup": number (relative to baseline)
+      - "throughput_gbps": number
+      - "changes": text description of what was changed
+      - "remaining_bottlenecks": array
+    outputs:
+      speedup: {type: number}
+      throughput_gbps: {type: number}
+      changes: {type: text}
+      remaining_bottlenecks: {type: json}
+
+  report:
+    type: post-exec
+    depends_on: [optimize]
+    description: "Generate optimization report"
+    effort: low
+    prompt_template: |
+      Generate a final optimization report.
+
+      Baseline: {{stages.profile-baseline.outputs.throughput_gbps}} GB/s
+      Final speedup: {{stages.optimize.outputs.speedup}}x
+      Final throughput: {{stages.optimize.outputs.throughput_gbps}} GB/s
+      Changes applied: {{stages.optimize.outputs.changes}}
+
+      Write a structured report with: summary, changes, before/after metrics.
+    outputs:
+      report: {type: text, path: "OPTIMIZATION_REPORT.md"}

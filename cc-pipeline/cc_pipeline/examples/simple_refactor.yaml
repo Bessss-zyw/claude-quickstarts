@@ -1,0 +1,71 @@
+name: "simple-refactor"
+description: "Analyze a Python module and suggest refactoring improvements"
+working_dir: /tmp/cc-pipeline-test
+
+defaults:
+  model: claude-sonnet-4-5
+  effort: medium
+  max_budget_usd: 1.0
+  permissions: readonly
+
+max_parallel: 2
+
+stages:
+  analyze:
+    type: pre-exec
+    description: "Analyze codebase structure and identify refactoring targets"
+    model: claude-sonnet-4-5
+    effort: high
+    prompt_template: |
+      Analyze the following Python files and identify refactoring opportunities.
+      Focus on: code duplication, overly complex functions, poor naming.
+
+      Output a JSON object with keys:
+      - "targets": array of {file, function, issue, suggestion}
+      - "priority": "high" | "medium" | "low"
+    outputs:
+      targets: {type: json}
+      priority: {type: text}
+
+  extract-utils:
+    type: subtask
+    depends_on: [analyze]
+    description: "Extract common utility functions"
+    permissions: write
+    prompt_template: |
+      Based on the analysis, extract common utility functions into a utils.py module.
+      Analysis: {{stages.analyze.outputs.targets}}
+
+      Create the utils.py file and update imports in existing files.
+      Output a JSON with "changed_files" (array of filenames) and "summary" (text).
+    outputs:
+      changed_files: {type: json}
+      summary: {type: text}
+
+  update-docs:
+    type: subtask
+    depends_on: [analyze]
+    description: "Update docstrings and comments"
+    permissions: write
+    prompt_template: |
+      Update docstrings and comments based on the refactoring plan.
+      Targets: {{stages.analyze.outputs.targets}}
+
+      Focus on functions that were identified as having poor naming or unclear purpose.
+      Output a brief summary of changes.
+    outputs:
+      doc_summary: {type: text}
+
+  summarize:
+    type: post-exec
+    depends_on: [extract-utils, update-docs]
+    description: "Generate final refactoring report"
+    effort: low
+    prompt_template: |
+      Summarize the refactoring results:
+      - Utility extraction: {{stages.extract-utils.outputs.summary}}
+      - Doc updates: {{stages.update-docs.outputs.doc_summary}}
+
+      Output a concise report.
+    outputs:
+      report: {type: text}

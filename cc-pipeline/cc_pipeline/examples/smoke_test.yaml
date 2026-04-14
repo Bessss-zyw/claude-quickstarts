@@ -1,0 +1,69 @@
+# Smoke test: minimal 3-stage pipeline with echo-based mock
+# This can be tested without a real claude binary by using a mock script.
+name: "smoke-test"
+description: "Minimal pipeline to verify framework functionality"
+working_dir: /tmp/cc-pipeline-smoke
+
+defaults:
+  model: claude-sonnet-4-5
+  effort: low
+  max_budget_usd: 0.5
+  permissions: readonly
+
+max_parallel: 2
+
+stages:
+  step-a:
+    type: pre-exec
+    description: "Generate a greeting"
+    prompt_template: |
+      Output exactly the following JSON (no other text):
+      ```json
+      {"greeting": "Hello from step-a", "number": 42}
+      ```
+    outputs:
+      greeting: {type: text}
+      number: {type: number}
+
+  step-b:
+    type: subtask
+    depends_on: [step-a]
+    description: "Echo the greeting from step-a"
+    prompt_template: |
+      You received this greeting: {{stages.step-a.outputs.greeting}}
+      And this number: {{stages.step-a.outputs.number}}
+
+      Repeat them back in a JSON:
+      ```json
+      {"echo": "<the greeting>", "doubled": <number * 2>}
+      ```
+    outputs:
+      echo: {type: text}
+      doubled: {type: number}
+
+  step-c:
+    type: subtask
+    depends_on: [step-a]
+    description: "Independent stage running in parallel with step-b"
+    prompt_template: |
+      The number from step-a is: {{stages.step-a.outputs.number}}
+      Output JSON: {"squared": <number^2>}
+    outputs:
+      squared: {type: number}
+
+  final:
+    type: post-exec
+    depends_on: [step-b, step-c]
+    description: "Combine results"
+    prompt_template: |
+      Combine these results:
+      - Echo: {{stages.step-b.outputs.echo}}
+      - Doubled: {{stages.step-b.outputs.doubled}}
+      - Squared: {{stages.step-c.outputs.squared}}
+
+      Output a summary JSON:
+      ```json
+      {"summary": "all done", "values": {"doubled": N, "squared": N}}
+      ```
+    outputs:
+      summary: {type: text}
